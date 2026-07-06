@@ -296,6 +296,7 @@ Please do not randomly patch bugs. Keep the PDF rendering and coordinate convers
 * Source rows now expose Design/Edit design, Show crop, and Remove crop actions so users can clearly choose which PDF/template to work on.
 * Source row layout has been loosened with larger spacing and clearer action grouping.
 * Source row controls should stay on one horizontal action row, using horizontal scroll on narrow/mobile screens instead of wrapping actions onto multiple lines.
+* Desktop layouts should adapt across common laptop and monitor resolutions; fixed minimum page widths must not hide fields, action buttons, or print preview panels on scaled displays.
 * On mobile, Source rows should stack into touch-friendly cards instead of forcing the desktop-wide row layout.
 * Designer remains a full page and includes a template selector pulldown so users can switch which template they are designing.
 * Designer includes PDF zoom controls, scrollable canvas areas, and mobile/touch-oriented crop handles so users can crop and resize more accurately on small screens.
