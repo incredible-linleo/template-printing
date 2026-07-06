@@ -2,12 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import * as pdfjsLib from "pdfjs-dist";
 import Papa from "papaparse";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, rgb } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 import {
   ArrowDownToLine,
   Check,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Database,
   Eye,
   FileText,
@@ -46,6 +48,21 @@ const PAPER_SIZES = {
   A3: { width: 841.89, height: 1190.55 },
 };
 
+const CSV_ENCODINGS = [
+  { value: "auto", label: "Auto" },
+  { value: "utf-8", label: "UTF-8" },
+  { value: "shift_jis", label: "Shift-JIS / CP932" },
+  { value: "big5", label: "Big5" },
+  { value: "gb18030", label: "GB18030 / GBK" },
+];
+
+const PDF_FONTS = {
+  regular: "/fonts/NotoSansCJKjp-Regular.otf",
+  bold: "/fonts/NotoSansCJKjp-Bold.otf",
+};
+
+const VARIABLE_MIN_PIXELS = 6;
+
 const NAV = [
   { id: "templates", titleKey: "page.templates.title", flowKey: "nav.source", icon: Layers },
   { id: "csv", titleKey: "page.csv.title", flowKey: "nav.csv", icon: Table },
@@ -63,12 +80,13 @@ const FLOW = [
 ];
 
 const defaultStyle = {
-  fontFamily: "Helvetica",
+  fontFamily: "NotoSansCJK",
   fontSize: 18,
   fontWeight: "normal",
   textAlign: "center",
   verticalAlign: "middle",
   color: "#000000",
+  backgroundColor: "transparent",
   autoFit: true,
 };
 
@@ -108,12 +126,15 @@ function App() {
   const [pageNumber, setPageNumber] = useState(1);
   const [pageCount, setPageCount] = useState(0);
   const [pageSize, setPageSize] = useState(null);
+  const [pdfZoom, setPdfZoom] = useState(1);
   const [renderBox, setRenderBox] = useState({ width: 0, height: 0, scale: 1 });
   const [cropRect, setCropRect] = useState(null);
   const [cropPreviewImageUrl, setCropPreviewImageUrl] = useState("");
+  const [cropPreviewDisplaySize, setCropPreviewDisplaySize] = useState(null);
   const [selectedVariableId, setSelectedVariableId] = useState("");
   const [exportUrl, setExportUrl] = useState("");
   const [status, setStatus] = useState("");
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   const canvasRef = useRef(null);
   const overlayRef = useRef(null);
@@ -193,7 +214,8 @@ function App() {
       const baseViewport = page.getViewport({ scale: 1 });
       const cropWorkspaceReserve = view === "designer" && designerMode === "crop" ? 380 : 620;
       const maxWidth = Math.min(1240, Math.max(420, window.innerWidth - cropWorkspaceReserve));
-      const scale = Math.max(0.35, Math.min(1.8, maxWidth / baseViewport.width));
+      const fitScale = Math.max(0.35, Math.min(1.8, maxWidth / baseViewport.width));
+      const scale = Math.max(0.35, Math.min(3, fitScale * pdfZoom));
       const viewport = page.getViewport({ scale });
       const canvas = canvasRef.current;
       const context = canvas.getContext("2d");
@@ -215,7 +237,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [view, designerMode, pdfDoc, pageNumber, activeTemplate?.cropArea]);
+  }, [view, designerMode, pdfDoc, pageNumber, activeTemplate?.cropArea, pdfZoom]);
 
   useEffect(() => {
     requestAnimationFrame(() => drawCropPreview());
@@ -358,9 +380,10 @@ function App() {
     if (drag.kind === "variable" && cropPreviewRef.current && activeTemplate) {
       const point = screenPointToCanvasPoint(event, cropPreviewRef.current);
       const next = clampRect(
-        resizedRect(drag.initial, drag.start, point, drag.mode),
+        resizedRect(drag.initial, drag.start, point, drag.mode, VARIABLE_MIN_PIXELS),
         cropPreviewRef.current.clientWidth,
         cropPreviewRef.current.clientHeight,
+        VARIABLE_MIN_PIXELS,
       );
       const normalized = normalizeRect(next, cropPreviewRef.current.clientWidth, cropPreviewRef.current.clientHeight);
       updateVariable(drag.variableId, normalized);
@@ -374,12 +397,20 @@ function App() {
   }
 
   async function drawCropPreview() {
-    if (!pdfDoc || !activeTemplate?.cropArea) return;
-    const page = await pdfDoc.getPage(pageNumber);
+    if (!pdfDoc || !activeTemplate?.cropArea) {
+      setCropPreviewImageUrl("");
+      setCropPreviewDisplaySize(null);
+      return;
+    }
+    try {
+      const previewPageNumber = activeTemplate.sourcePdf?.pageNumber ?? pageNumber;
+      const page = await pdfDoc.getPage(previewPageNumber);
     const baseViewport = page.getViewport({ scale: 1 });
     const cropPixels = ratioRectToPixels(activeTemplate.cropArea, baseViewport.width, baseViewport.height);
-    const previewWidth = Math.min(780, Math.max(320, cropPixels.width * renderBox.scale));
-    const scale = previewWidth / cropPixels.width;
+    const displayWidth = Math.min(980, Math.max(360, cropPixels.width * Math.max(renderBox.scale, 1)));
+    const displayScale = displayWidth / cropPixels.width;
+    const qualityScale = Math.max(2, Math.min(4, window.devicePixelRatio || 2));
+    const scale = displayScale * qualityScale;
     const viewport = page.getViewport({ scale });
     const offscreen = document.createElement("canvas");
     offscreen.width = viewport.width;
@@ -387,6 +418,7 @@ function App() {
     await page.render({ canvasContext: offscreen.getContext("2d"), viewport }).promise;
     const targetWidth = Math.round(cropPixels.width * scale);
     const targetHeight = Math.round(cropPixels.height * scale);
+    const displayHeight = Math.round(cropPixels.height * displayScale);
     const cropCanvas = document.createElement("canvas");
     cropCanvas.width = targetWidth;
     cropCanvas.height = targetHeight;
@@ -402,16 +434,22 @@ function App() {
       targetWidth,
       targetHeight,
     );
+    setCropPreviewDisplaySize({ width: Math.round(displayWidth), height: displayHeight });
     setCropPreviewImageUrl(cropCanvas.toDataURL("image/png"));
     const canvas = cropPreviewRef.current?.querySelector("canvas");
     if (!canvas) return;
     canvas.width = targetWidth;
     canvas.height = targetHeight;
-    canvas.style.width = `${canvas.width}px`;
-    canvas.style.height = `${canvas.height}px`;
+    canvas.style.width = `${Math.round(displayWidth)}px`;
+    canvas.style.height = `${displayHeight}px`;
     const context = canvas.getContext("2d");
     context.clearRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(cropCanvas, 0, 0);
+      context.drawImage(cropCanvas, 0, 0);
+    } catch (error) {
+      setCropPreviewImageUrl("");
+      setCropPreviewDisplaySize(null);
+      setStatus(`Could not render crop preview: ${error.message}`);
+    }
   }
 
   function addVariable() {
@@ -431,6 +469,25 @@ function App() {
       widthRatio: 0.35,
       heightRatio: 0.16,
       style: { ...defaultStyle },
+    };
+    updateTemplate(activeTemplate.templateId, { variables: [...activeTemplate.variables, next] });
+    setSelectedVariableId(id);
+  }
+
+  function duplicateVariable(variableId = selectedVariableId) {
+    if (!activeTemplate?.cropArea || !variableId) return;
+    const source = activeTemplate.variables.find((item) => item.id === variableId);
+    if (!source) return;
+    const id = crypto.randomUUID();
+    const fieldName = `field_${activeTemplate.variables.length + 1}`;
+    const next = {
+      ...source,
+      id,
+      key: fieldName,
+      displayName: fieldName,
+      xRatio: Math.min(0.95 - source.widthRatio, source.xRatio + 0.02),
+      yRatio: Math.min(0.95 - source.heightRatio, source.yRatio + 0.02),
+      style: { ...source.style },
     };
     updateTemplate(activeTemplate.templateId, { variables: [...activeTemplate.variables, next] });
     setSelectedVariableId(id);
@@ -460,41 +517,43 @@ function App() {
     if (selectedVariableId === variableId) setSelectedVariableId("");
   }
 
-  function handleCsvUpload(event) {
+  async function handleCsvUpload(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (result) => {
-        const id = crypto.randomUUID();
-        const fields = result.meta.fields ?? [];
-        const dataset = {
-          id,
-          name: file.name.replace(/\.csv$/i, ""),
-          fileName: file.name,
-          headers: fields,
-          rows: result.data,
-          createdAt: new Date().toISOString(),
-        };
-        setCsvDatasets((items) => [dataset, ...items]);
-        setActiveCsvId(id);
-        setPreviewCsvId("");
-        setSelectedRowIds(result.data.map((_, index) => String(index)));
-        setRowCopies(result.data.reduce((copies, _row, index) => ({ ...copies, [index]: 1 }), {}));
-        if (activeTemplate) {
-          const nextKey = mappingKey(activeTemplate.templateId, id);
-          setMappings((current) => ({
-            ...current,
-            [nextKey]: autoMapping(activeTemplate.variables, fields, current[nextKey]),
-          }));
-        }
-        setView("csv");
-        setStatus(`CSV saved as a reusable dataset with ${result.data.length} rows.`);
-      },
-      error: (error) => setStatus(error.message),
-    });
+    try {
+      const decoded = await decodeCsvFile(file, "auto");
+      const result = Papa.parse(decoded.text, { header: true, skipEmptyLines: true });
+      if (result.errors?.length) throw new Error(result.errors[0].message);
+      const id = crypto.randomUUID();
+      const fields = result.meta.fields ?? [];
+      const dataset = {
+        id,
+        name: file.name.replace(/\.csv$/i, ""),
+        fileName: file.name,
+        headers: fields,
+        rows: result.data,
+        encoding: decoded.encoding,
+        encodingDetected: decoded.detected,
+        createdAt: new Date().toISOString(),
+      };
+      setCsvDatasets((items) => [dataset, ...items]);
+      setActiveCsvId(id);
+      setPreviewCsvId("");
+      setSelectedRowIds(result.data.map((_, index) => String(index)));
+      setRowCopies(result.data.reduce((copies, _row, index) => ({ ...copies, [index]: 1 }), {}));
+      if (activeTemplate) {
+        const nextKey = mappingKey(activeTemplate.templateId, id);
+        setMappings((current) => ({
+          ...current,
+          [nextKey]: autoMapping(activeTemplate.variables, fields, current[nextKey]),
+        }));
+      }
+      setView("csv");
+      setStatus(`CSV saved with ${result.data.length} rows (${encodingLabel(decoded.encoding)}).`);
+    } catch (error) {
+      setStatus(error.message);
+    }
   }
 
   function updateMapping(variableId, header) {
@@ -550,7 +609,9 @@ function App() {
   }
 
   function openDesignerForTemplate(templateId, mode = "crop") {
+    const template = templates.find((item) => item.templateId === templateId);
     setActiveTemplateId(templateId);
+    if (template?.sourcePdf?.pageNumber) setPageNumber(template.sourcePdf.pageNumber);
     setSelectedVariableId("");
     setDesignerMode(mode);
     setView("designer");
@@ -570,19 +631,68 @@ function App() {
     setStatus("Crop removed.");
   }
 
-  async function generatePdf() {
+  function deleteTemplate(templateId) {
+    const template = templates.find((item) => item.templateId === templateId);
+    if (!template) return;
+    const ok = window.confirm(`Delete "${template.templateName}" and its saved PDF/crop/variables?`);
+    if (!ok) return;
+    const remaining = templates.filter((item) => item.templateId !== templateId);
+    setTemplates(remaining);
+    setMappings((current) => Object.fromEntries(
+      Object.entries(current).filter(([key]) => !key.startsWith(`${templateId}::`)),
+    ));
+    if (activeTemplateId === templateId) {
+      const nextTemplate = remaining[0] ?? null;
+      setActiveTemplateId(nextTemplate?.templateId ?? "");
+      setSelectedVariableId("");
+      setCropRect(null);
+      setCropPreviewImageUrl("");
+      setPdfDoc(null);
+      setPageNumber(nextTemplate?.sourcePdf?.pageNumber ?? 1);
+      setPageCount(0);
+      setPageSize(null);
+    }
+    setStatus(`Deleted template "${template.templateName}".`);
+  }
+
+  function deleteCsvDataset(csvId) {
+    const dataset = csvDatasets.find((item) => item.id === csvId);
+    if (!dataset) return;
+    const ok = window.confirm(`Delete CSV dataset "${dataset.name}"?`);
+    if (!ok) return;
+    const remaining = csvDatasets.filter((item) => item.id !== csvId);
+    setCsvDatasets(remaining);
+    setMappings((current) => Object.fromEntries(
+      Object.entries(current).filter(([key]) => !key.endsWith(`::${csvId}`)),
+    ));
+    if (previewCsvId === csvId) setPreviewCsvId("");
+    if (activeCsvId === csvId) {
+      const nextDataset = remaining[0] ?? null;
+      setActiveCsvId(nextDataset?.id ?? "");
+      setSelectedRowIds(nextDataset ? nextDataset.rows.map((_, index) => String(index)) : []);
+      setRowCopies(nextDataset ? nextDataset.rows.reduce((copies, _row, index) => ({ ...copies, [index]: 1 }), {}) : {});
+    }
+    setStatus(`Deleted CSV dataset "${dataset.name}".`);
+  }
+
+  async function generatePdf({ openAfter = false, downloadAfter = false } = {}) {
     if (!activeTemplate?.sourcePdf?.dataBase64 || !activeTemplate.cropArea) {
       setStatus("Select a template with a saved crop before exporting.");
-      return;
+      return "";
     }
     if (!activeTemplate.variables.length) {
       setStatus("Add at least one variable before exporting.");
-      return;
+      return "";
     }
+    setIsGeneratingPdf(true);
+    try {
+    setStatus("Preparing source PDF...");
     const sourceDoc = await PDFDocument.load(base64ToArrayBuffer(activeTemplate.sourcePdf.dataBase64));
     const outputDoc = await PDFDocument.create();
-    const font = await outputDoc.embedFont(StandardFonts.Helvetica);
-    const boldFont = await outputDoc.embedFont(StandardFonts.HelveticaBold);
+    outputDoc.registerFontkit(fontkit);
+    setStatus("Loading CJK export fonts...");
+    const { regularFont, boldFont } = await loadPdfFonts(outputDoc);
+    setStatus("Composing printable PDF...");
     const sourcePage = sourceDoc.getPages()[(activeTemplate.sourcePdf.pageNumber ?? 1) - 1];
     const sourcePageSize = sourcePage.getSize();
     const crop = pdfCropBoxFromRatios(activeTemplate.cropArea, sourcePageSize.width, sourcePageSize.height);
@@ -612,14 +722,24 @@ function App() {
       activeTemplate.variables.forEach((variable) => {
         const header = activeMapping[variable.id];
         const text = String(row[header] ?? variable.displayName ?? "");
-        const drawFont = variable.style.fontWeight === "bold" ? boldFont : font;
+        const drawFont = variable.style.fontWeight === "bold" ? boldFont : regularFont;
         const box = {
           x: x + variable.xRatio * itemWidth,
           y: y + itemHeight - (variable.yRatio + variable.heightRatio) * itemHeight,
           width: variable.widthRatio * itemWidth,
           height: variable.heightRatio * itemHeight,
         };
-        const size = fitFontSize(text, variable.style.fontSize, box.width, variable.style.autoFit, drawFont);
+        const baseSize = Math.max(4, variable.style.fontSize * scale);
+        const size = fitFontSize(text, baseSize, box.width, box.height, variable.style.autoFit, drawFont);
+        if (variable.style.backgroundColor && variable.style.backgroundColor !== "transparent") {
+          outputPage.drawRectangle({
+            x: box.x,
+            y: box.y,
+            width: box.width,
+            height: box.height,
+            color: hexToRgb(variable.style.backgroundColor),
+          });
+        }
         outputPage.drawText(text, {
           x: alignX(box, drawFont.widthOfTextAtSize(text, size), variable.style.textAlign),
           y: alignY(box, size, variable.style.verticalAlign),
@@ -631,8 +751,41 @@ function App() {
     });
     const bytes = await outputDoc.save();
     if (exportUrl) URL.revokeObjectURL(exportUrl);
-    setExportUrl(URL.createObjectURL(new Blob([bytes], { type: "application/pdf" })));
+    const nextUrl = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+    setExportUrl(nextUrl);
     setStatus("Printable PDF generated.");
+    if (openAfter) window.open(nextUrl, "_blank", "noopener,noreferrer");
+    if (downloadAfter) downloadBlobUrl(nextUrl, "template-print-output.pdf");
+    return nextUrl;
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  }
+
+  async function openPdfForPrint() {
+    const placeholder = window.open("about:blank", "_blank");
+    if (placeholder) {
+      placeholder.document.open();
+      placeholder.document.write(printWindowHtml("Generating PDF...", ""));
+      placeholder.document.close();
+    }
+    try {
+      const nextUrl = await generatePdf();
+      if (placeholder && nextUrl) {
+        placeholder.document.open();
+        placeholder.document.write(printWindowHtml("Printable PDF", nextUrl));
+        placeholder.document.close();
+      } else if (nextUrl) {
+        setStatus("PDF generated. Browser blocked the print tab, so allow pop-ups or use Generate PDF to download.");
+      } else if (placeholder) {
+        placeholder.document.body.innerHTML = "<p style='font-family:sans-serif;padding:24px'>PDF could not be generated. Check the original app tab for details.</p>";
+      }
+    } catch (error) {
+      if (placeholder) {
+        placeholder.document.body.innerHTML = `<p style="font-family:sans-serif;padding:24px;color:#a43f34">PDF generation failed: ${escapeHtml(error.message)}</p>`;
+      }
+      setStatus(error.message);
+    }
   }
 
   const cropDebug = cropRect && pageSize ? {
@@ -679,6 +832,7 @@ function App() {
             canCreateFromActivePdf={Boolean(activeTemplate?.sourcePdf?.dataBase64)}
             openDesignerForTemplate={openDesignerForTemplate}
             removeCrop={removeCrop}
+            deleteTemplate={deleteTemplate}
             t={t}
           />
         )}
@@ -695,6 +849,8 @@ function App() {
             renderBox={renderBox}
             cropRect={cropRect}
             cropDebug={cropDebug}
+            pdfZoom={pdfZoom}
+            setPdfZoom={setPdfZoom}
             pageNumber={pageNumber}
             pageCount={pageCount}
             setPageNumber={setPageNumber}
@@ -709,10 +865,12 @@ function App() {
             selectedVariable={selectedVariable}
             beginVariableDrag={beginVariableDrag}
             addVariable={addVariable}
+            duplicateVariable={duplicateVariable}
             deleteVariable={deleteVariable}
             updateVariable={updateSelectedVariable}
             updateVariableStyle={updateSelectedVariableStyle}
             cropPreviewImageUrl={cropPreviewImageUrl}
+            cropPreviewDisplaySize={cropPreviewDisplaySize}
             t={t}
           />
         )}
@@ -724,6 +882,7 @@ function App() {
             previewCsvId={previewCsvId}
             setPreviewCsvId={setPreviewCsvId}
             onCsvUpload={handleCsvUpload}
+            deleteCsvDataset={deleteCsvDataset}
             t={t}
           />
         )}
@@ -743,6 +902,7 @@ function App() {
             previewOpen={mappingPreviewOpen}
             setPreviewOpen={setMappingPreviewOpen}
             cropPreviewImageUrl={cropPreviewImageUrl}
+            cropPreviewDisplaySize={cropPreviewDisplaySize}
             t={t}
           />
         )}
@@ -766,7 +926,9 @@ function App() {
             setLayout={setLayout}
             autoLayout={autoLayout}
             generatePdf={generatePdf}
+            openPdfForPrint={openPdfForPrint}
             exportUrl={exportUrl}
+            isGeneratingPdf={isGeneratingPdf}
             previewOpen={printPreviewOpen}
             setPreviewOpen={setPrintPreviewOpen}
             cropPreviewImageUrl={cropPreviewImageUrl}
@@ -928,6 +1090,7 @@ function TemplatesPage({
   canCreateFromActivePdf,
   openDesignerForTemplate,
   removeCrop,
+  deleteTemplate,
   t,
 }) {
   return (
@@ -947,24 +1110,30 @@ function TemplatesPage({
           </button>
         </div>
         <div className="template-list">
-          {templates.length === 0 && <EmptyState title="No templates yet" text="Upload a PDF to create your first reusable template." />}
+          {templates.length === 0 && <EmptyState title={t("source.noTemplates")} text={t("source.noTemplatesText")} />}
           {templates.map((template) => (
             <article key={template.templateId} className={`template-row ${template.templateId === activeTemplateId ? "active" : ""}`}>
-              <button onClick={() => setActiveTemplateId(template.templateId)}>
-                <strong>{template.templateName}</strong>
+              <button className="template-row-main" onClick={() => setActiveTemplateId(template.templateId)}>
                 <span>{template.sourcePdf.fileName}</span>
                 <span>Page {template.sourcePdf.pageNumber ?? 1} · {template.cropArea ? "Crop saved" : "Needs crop"} · {template.variables.length} variables</span>
               </button>
-                            <div className="template-row-actions">
-                <input value={template.templateName} onChange={(event) => updateTemplate(template.templateId, { templateName: event.target.value })} />
+              <input
+                className="template-name-input"
+                value={template.templateName}
+                onChange={(event) => updateTemplate(template.templateId, { templateName: event.target.value })}
+              />
+              <div className="template-row-actions">
                 <button onClick={() => openDesignerForTemplate(template.templateId, template.cropArea ? "fields" : "crop")}>
-                  <MousePointer2 size={16} /> {template.cropArea ? "Edit design" : "Design crop"}
+                  <MousePointer2 size={16} /> {template.cropArea ? t("source.editDesign") : t("source.designCrop")}
                 </button>
                 <button disabled={!template.cropArea} onClick={() => openDesignerForTemplate(template.templateId, "fields")}>
-                  <Eye size={16} /> Show crop
+                  <Eye size={16} /> {t("source.showCrop")}
                 </button>
                 <button className="danger" disabled={!template.cropArea} onClick={() => removeCrop(template.templateId)}>
-                  <X size={16} /> Remove crop
+                  <X size={16} /> {t("source.removeCrop")}
+                </button>
+                <button className="danger" onClick={() => deleteTemplate(template.templateId)}>
+                  <X size={16} /> {t("button.deleteTemplate")}
                 </button>
               </div>
             </article>
@@ -988,6 +1157,8 @@ function DesignerPage(props) {
     renderBox,
     cropRect,
     cropDebug,
+    pdfZoom,
+    setPdfZoom,
     pageNumber,
     pageCount,
     setPageNumber,
@@ -1002,10 +1173,12 @@ function DesignerPage(props) {
     selectedVariable,
     beginVariableDrag,
     addVariable,
+    duplicateVariable,
     deleteVariable,
     updateVariable,
     updateVariableStyle,
     cropPreviewImageUrl,
+    cropPreviewDisplaySize,
     t,
   } = props;
   const [inspectorOpen, setInspectorOpen] = useState(true);
@@ -1036,6 +1209,11 @@ function DesignerPage(props) {
               <button disabled={pageNumber <= 1} onClick={() => setPageNumber((p) => p - 1)}><ChevronLeft size={16} /> {t("designer.previous")}</button>
               <button disabled={pageNumber >= pageCount} onClick={() => setPageNumber((p) => p + 1)}>{t("designer.next")} <ChevronRight size={16} /></button>
               <span className="meta">Page {pageNumber} / {pageCount || "-"}</span>
+              <div className="zoom-controls" aria-label="PDF zoom">
+                <button onClick={() => setPdfZoom((zoom) => Math.max(0.5, Number((zoom - 0.25).toFixed(2))))}>-</button>
+                <span>{Math.round(pdfZoom * 100)}%</span>
+                <button onClick={() => setPdfZoom((zoom) => Math.min(2.5, Number((zoom + 0.25).toFixed(2))))}>+</button>
+              </div>
               <button onClick={clearCrop}>{t("designer.redrawCrop")}</button>
               <button className="primary" disabled={!cropRect} onClick={saveCrop}><Save size={16} /> {t("designer.saveCrop")}</button>
               <span className="toolbar-hint">Drag on the PDF to create a crop. Move or resize with corner handles.</span>
@@ -1069,6 +1247,7 @@ function DesignerPage(props) {
             setSelectedVariableId={setSelectedVariableId}
             beginVariableDrag={beginVariableDrag}
             cropImageUrl={cropPreviewImageUrl}
+            cropPreviewDisplaySize={cropPreviewDisplaySize}
           />
         )}
       </div>
@@ -1077,7 +1256,7 @@ function DesignerPage(props) {
           <div className="panel-head">
             <div>
               <h3>Fields</h3>
-              <p className="muted">Select, edit, resize, or delete fields.</p>
+              <p className="muted">{template.variables.length} fields</p>
             </div>
             <button className="icon-button" title="Close fields panel" onClick={() => setInspectorOpen(false)}><X size={16} /></button>
           </div>
@@ -1089,7 +1268,10 @@ function DesignerPage(props) {
                   <strong>{variable.displayName}</strong>
                   <span>{variable.key}</span>
                 </button>
-                <button className="icon-button danger" title="Delete field" onClick={() => deleteVariable(variable.id)}><X size={14} /></button>
+                <div className="variable-list-actions">
+                  <button className="icon-button" title="Duplicate field" onClick={() => duplicateVariable(variable.id)}><Copy size={14} /></button>
+                  <button className="icon-button danger" title="Delete field" onClick={() => deleteVariable(variable.id)}><X size={14} /></button>
+                </div>
               </div>
             ))}
           </div>
@@ -1097,7 +1279,9 @@ function DesignerPage(props) {
             variable={selectedVariable}
             updateVariable={updateVariable}
             updateVariableStyle={updateVariableStyle}
+            duplicateVariable={() => duplicateVariable(selectedVariableId)}
             deleteVariable={deleteVariable}
+            t={t}
           />
         </aside>
       )}
@@ -1116,10 +1300,22 @@ function CropBox({ rect, onDrag }) {
   );
 }
 
-function TemplateCanvas({ template, cropPreviewRef, selectedVariableId, setSelectedVariableId, beginVariableDrag, previewValues = {}, cropImageUrl = "" }) {
+function TemplateCanvas({
+  template,
+  cropPreviewRef,
+  selectedVariableId,
+  setSelectedVariableId,
+  beginVariableDrag,
+  previewValues = {},
+  cropImageUrl = "",
+  cropPreviewDisplaySize = null,
+}) {
   const editable = Boolean(beginVariableDrag);
+  const previewStyle = cropPreviewDisplaySize
+    ? { width: `${cropPreviewDisplaySize.width}px`, height: `${cropPreviewDisplaySize.height}px` }
+    : undefined;
   return (
-    <div className="crop-preview" ref={cropPreviewRef}>
+    <div className="crop-preview" ref={cropPreviewRef} style={previewStyle}>
       {cropImageUrl ? <img className="crop-preview-image" src={cropImageUrl} alt="" /> : <canvas />}
       <div className="variable-layer">
         {template.variables.map((variable) => (
@@ -1132,6 +1328,7 @@ function TemplateCanvas({ template, cropPreviewRef, selectedVariableId, setSelec
               width: `${variable.widthRatio * 100}%`,
               height: `${variable.heightRatio * 100}%`,
               color: variable.style.color,
+              backgroundColor: variable.style.backgroundColor || "rgba(255, 255, 255, 0.42)",
               fontSize: Math.max(11, variable.style.fontSize * 0.72),
               fontWeight: variable.style.fontWeight,
               justifyContent: justify(variable.style.textAlign),
@@ -1150,24 +1347,44 @@ function TemplateCanvas({ template, cropPreviewRef, selectedVariableId, setSelec
   );
 }
 
-function VariableEditor({ variable, updateVariable, updateVariableStyle, deleteVariable }) {
+function VariableEditor({ variable, updateVariable, updateVariableStyle, duplicateVariable, deleteVariable, t }) {
   if (!variable) return <p className="muted">Select a variable to edit its name, key, and style.</p>;
   return (
-    <div className="form-stack">
-      <label>Key<input value={variable.key} onChange={(event) => updateVariable({ key: event.target.value })} /></label>
-      <label>Display name<input value={variable.displayName} onChange={(event) => updateVariable({ displayName: event.target.value })} /></label>
-      <label>Font size<input type="number" value={variable.style.fontSize} onChange={(event) => updateVariableStyle({ fontSize: Number(event.target.value) })} /></label>
-      <label>Weight<select value={variable.style.fontWeight} onChange={(event) => updateVariableStyle({ fontWeight: event.target.value })}><option>normal</option><option>bold</option></select></label>
-      <label>Text align<select value={variable.style.textAlign} onChange={(event) => updateVariableStyle({ textAlign: event.target.value })}><option>left</option><option>center</option><option>right</option></select></label>
-      <label>Vertical align<select value={variable.style.verticalAlign} onChange={(event) => updateVariableStyle({ verticalAlign: event.target.value })}><option>top</option><option>middle</option><option>bottom</option></select></label>
-      <label>Color<input type="color" value={variable.style.color} onChange={(event) => updateVariableStyle({ color: event.target.value })} /></label>
+    <div className="field-editor">
+      <div className="form-stack">
+        <label>Key<input value={variable.key} onChange={(event) => updateVariable({ key: event.target.value })} /></label>
+        <label>Display name<input value={variable.displayName} onChange={(event) => updateVariable({ displayName: event.target.value })} /></label>
+      </div>
+      <div className="form-grid compact-form">
+        <label>Font size<input type="number" min="4" value={variable.style.fontSize} onChange={(event) => updateVariableStyle({ fontSize: Number(event.target.value) })} /></label>
+        <label>Weight<select value={variable.style.fontWeight} onChange={(event) => updateVariableStyle({ fontWeight: event.target.value })}><option>normal</option><option>bold</option></select></label>
+        <label>Text align<select value={variable.style.textAlign} onChange={(event) => updateVariableStyle({ textAlign: event.target.value })}><option>left</option><option>center</option><option>right</option></select></label>
+        <label>Vertical align<select value={variable.style.verticalAlign} onChange={(event) => updateVariableStyle({ verticalAlign: event.target.value })}><option>top</option><option>middle</option><option>bottom</option></select></label>
+      </div>
+      <div className="swatch-row">
+        <label>Text color<input type="color" value={variable.style.color} onChange={(event) => updateVariableStyle({ color: event.target.value })} /></label>
+        <label>Box background<input type="color" value={normalizeColor(variable.style.backgroundColor)} onChange={(event) => updateVariableStyle({ backgroundColor: event.target.value })} /></label>
+        <button type="button" onClick={() => updateVariableStyle({ backgroundColor: "transparent" })}>Clear bg</button>
+      </div>
       <label className="check"><input type="checkbox" checked={variable.style.autoFit} onChange={(event) => updateVariableStyle({ autoFit: event.target.checked })} /> Auto-fit text</label>
-      <button className="danger" onClick={() => deleteVariable(variable.id)}>Delete variable</button>
+      <div className="field-editor-actions">
+        <button onClick={duplicateVariable}><Copy size={16} /> {t("button.duplicateVariable")}</button>
+        <button className="danger" onClick={() => deleteVariable(variable.id)}>Delete variable</button>
+      </div>
     </div>
   );
 }
 
-function CsvPage({ datasets, activeCsvId, setActiveCsvId, previewCsvId, setPreviewCsvId, onCsvUpload, t }) {
+function CsvPage({
+  datasets,
+  activeCsvId,
+  setActiveCsvId,
+  previewCsvId,
+  setPreviewCsvId,
+  onCsvUpload,
+  deleteCsvDataset,
+  t,
+}) {
   const active = datasets.find((dataset) => dataset.id === activeCsvId);
   const previewDataset = datasets.find((dataset) => dataset.id === previewCsvId);
   return (
@@ -1175,26 +1392,36 @@ function CsvPage({ datasets, activeCsvId, setActiveCsvId, previewCsvId, setPrevi
       <div className="section-card">
         <div className="section-head">
           <div>
-            <h3>Saved CSV datasets</h3>
-            <p className="muted">Upload multiple CSV files and choose which one to use for export.</p>
+            <h3>{t("csv.savedDatasets")}</h3>
+            <p className="muted">{t("csv.savedDatasetsText")}</p>
           </div>
-          <label className="button primary">
-            <Upload size={16} /> {t("button.uploadCsv")}
-            <input type="file" accept=".csv,text/csv" onChange={onCsvUpload} />
-          </label>
+          <div className="csv-upload-tools">
+            <label className="button primary">
+              <Upload size={16} /> {t("button.uploadCsv")}
+              <input type="file" accept=".csv,text/csv" onChange={onCsvUpload} />
+            </label>
+          </div>
         </div>
-        <div className="template-list">
-          {datasets.length === 0 && <EmptyState title="No CSV datasets" text="Upload a UTF-8 CSV with headers." />}
+        <div className="csv-list">
+          {datasets.length === 0 && <EmptyState title={t("csv.noDatasets")} text={t("csv.noDatasetsText")} />}
           {datasets.map((dataset) => (
-            <article key={dataset.id} className={`template-row ${dataset.id === activeCsvId ? "active" : ""}`}>
-              <button onClick={() => setActiveCsvId(dataset.id)}>
+            <article key={dataset.id} className={`csv-row ${dataset.id === activeCsvId ? "active" : ""}`}>
+              <button className="csv-row-main" onClick={() => setActiveCsvId(dataset.id)}>
                 <strong>{dataset.name}</strong>
-                <span>{dataset.fileName}</span>
-                <span>{dataset.rows.length} rows - {dataset.headers.length} columns</span>
+                <span>
+                  {dataset.fileName} · {dataset.rows.length} rows · {dataset.headers.length} columns · {encodingLabel(dataset.encoding)}
+                  {dataset.encodingDetected ? ` ${t("csv.autoDetected")}` : ""}
+                </span>
               </button>
-              <button onClick={() => setPreviewCsvId(previewCsvId === dataset.id ? "" : dataset.id)}>
-                {previewCsvId === dataset.id ? t("button.close") : t("button.preview")}
-              </button>
+              <div className="csv-row-actions">
+                <button className="preview-button" onClick={() => setPreviewCsvId(previewCsvId === dataset.id ? "" : dataset.id)}>
+                  <Eye size={16} />
+                  {previewCsvId === dataset.id ? t("button.close") : t("button.preview")}
+                </button>
+                <button className="danger" onClick={() => deleteCsvDataset(dataset.id)}>
+                  <X size={16} /> {t("button.deleteCsv")}
+                </button>
+              </div>
             </article>
           ))}
         </div>
@@ -1219,6 +1446,7 @@ function CsvPreview({ dataset }) {
   return (
     <div className="table-wrap">
       <h3>{dataset.name}</h3>
+      <p className="muted">{dataset.fileName} · {encodingLabel(dataset.encoding)} · {dataset.rows.length} rows</p>
       <table>
         <thead><tr>{dataset.headers.map((header) => <th key={header}>{header}</th>)}</tr></thead>
         <tbody>{dataset.rows.slice(0, 8).map((row, index) => <tr key={index}>{dataset.headers.map((header) => <td key={header}>{row[header]}</td>)}</tr>)}</tbody>
@@ -1242,23 +1470,33 @@ function MappingPage({
   previewOpen,
   setPreviewOpen,
   cropPreviewImageUrl,
+  cropPreviewDisplaySize,
   t,
 }) {
+  const [selectedDropVariableId, setSelectedDropVariableId] = useState("");
   const previewValues = useMemo(() => previewValuesFromRow(template, dataset, mapping, dataset?.rows?.[0]), [template, dataset, mapping]);
+  const mappedHeaders = new Set(Object.values(mapping).filter(Boolean));
+  const assignHeader = (variableId, header) => {
+    if (!variableId || !header) return;
+    updateMapping(variableId, header);
+    setSelectedDropVariableId("");
+  };
+  const firstUnmappedVariable = template?.variables.find((variable) => !mapping[variable.id]);
+  const clickHeader = (header) => assignHeader(selectedDropVariableId || firstUnmappedVariable?.id, header);
   return (
     <section className={previewOpen ? "page-grid print-page-grid" : "page-grid single-column"}>
       <div className="section-card">
         <div className="section-head">
           <div>
-            <h3>Create print job</h3>
-            <p className="muted">Choose one template and one CSV, then map their fields for this print run.</p>
+            <h3>{t("mapping.title")}</h3>
+            <p className="muted">{t("mapping.description")}</p>
           </div>
         </div>
         <div className="print-job-picker">
           <label>
-            <span>Template</span>
+            <span>{t("mapping.template")}</span>
             <select value={activeTemplateId} onChange={(event) => setActiveTemplateId(event.target.value)}>
-              {templates.length === 0 && <option value="">No templates</option>}
+              {templates.length === 0 && <option value="">{t("mapping.noTemplates")}</option>}
               {templates.map((item) => (
                 <option key={item.templateId} value={item.templateId}>
                   {item.templateName} - {item.variables.length} vars
@@ -1267,9 +1505,9 @@ function MappingPage({
             </select>
           </label>
           <label>
-            <span>CSV dataset</span>
+            <span>{t("mapping.csvDataset")}</span>
             <select value={activeCsvId} onChange={(event) => setActiveCsvId(event.target.value)}>
-              {csvDatasets.length === 0 && <option value="">No CSV datasets</option>}
+              {csvDatasets.length === 0 && <option value="">{t("mapping.noCsvDatasets")}</option>}
               {csvDatasets.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name} - {item.rows.length} rows
@@ -1278,34 +1516,97 @@ function MappingPage({
             </select>
           </label>
         </div>
-        {!template && <EmptyState title="No template selected" text="Create or select a template before mapping fields." />}
-        {template && !dataset && <EmptyState title="No CSV selected" text="Upload or select a CSV dataset before mapping fields." />}
+        {!template && <EmptyState title={t("mapping.noTemplateSelected")} text={t("mapping.noTemplateText")} />}
+        {template && !dataset && <EmptyState title={t("mapping.noCsvSelected")} text={t("mapping.noCsvText")} />}
         <div className="section-actions">
           <button disabled={!template?.cropArea || !dataset} onClick={() => setPreviewOpen(true)}><Eye size={16} /> {t("button.preview")}</button>
         </div>
         {template && dataset && (
-          <>
-            <div className="mapping-list smart-mapping">
-              {template.variables.length === 0 && <EmptyState title="No variables yet" text="Go to Designer and add variable boxes before mapping." />}
-              {template.variables.map((variable) => (
-                <label key={variable.id}>
-                  <span>
-                    <strong>{variable.displayName}</strong>
-                    <small>{variable.key}</small>
-                  </span>
-                  <select value={mapping[variable.id] ?? ""} onChange={(event) => updateMapping(variable.id, event.target.value)}>
-                    <option value="">Do not print</option>
-                    {dataset.headers.map((header) => <option key={header} value={header}>{header}</option>)}
-                  </select>
-                  <em>{mapping[variable.id] ? sampleValue(dataset, mapping[variable.id]) : "No sample"}</em>
-                </label>
-              ))}
+          <div className="mapping-workspace">
+            <div className="mapping-panel">
+              <div className="mapping-panel-head">
+                <h3>{t("mapping.templateFields")}</h3>
+                <span>{template.variables.filter((variable) => mapping[variable.id]).length} / {template.variables.length}</span>
+              </div>
+              <div className="mapping-drop-list">
+                {template.variables.length === 0 && <EmptyState title={t("mapping.noVariables")} text={t("mapping.noVariablesText")} />}
+                {template.variables.map((variable) => {
+                  const header = mapping[variable.id] ?? "";
+                  return (
+                    <button
+                      key={variable.id}
+                      className={`mapping-drop-row ${selectedDropVariableId === variable.id ? "selected" : ""} ${header ? "mapped" : ""}`}
+                      onClick={() => setSelectedDropVariableId(variable.id)}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={(event) => assignHeader(variable.id, event.dataTransfer.getData("text/plain"))}
+                    >
+                      <span className="mapping-var-name">
+                        <strong>{variable.displayName}</strong>
+                        <small>{variable.key}</small>
+                      </span>
+                      <span className="mapping-target">
+                        {header ? (
+                          <>
+                            <strong>{header}</strong>
+                            <small>{sampleValue(dataset, header)}</small>
+                          </>
+                        ) : (
+                          <em>{t("mapping.dropCsvField")}</em>
+                        )}
+                      </span>
+                      {header && (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          className="mapping-clear"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            updateMapping(variable.id, "");
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") updateMapping(variable.id, "");
+                          }}
+                        >
+                          <X size={14} />
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </>
+            <div className="mapping-panel">
+              <div className="mapping-panel-head">
+                <h3>{t("mapping.csvFields")}</h3>
+                <span>{dataset.headers.length}</span>
+              </div>
+              <div className="csv-field-list">
+                {dataset.headers.map((header) => (
+                  <button
+                    key={header}
+                    className={`csv-field-chip ${mappedHeaders.has(header) ? "used" : ""}`}
+                    draggable
+                    onDragStart={(event) => event.dataTransfer.setData("text/plain", header)}
+                    onClick={() => clickHeader(header)}
+                  >
+                    <strong>{header}</strong>
+                    <small>{sampleValue(dataset, header)}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
       </div>
       {template?.cropArea && previewOpen ? (
-        <PreviewCard template={template} cropPreviewRef={cropPreviewRef} onClose={() => setPreviewOpen(false)} previewValues={previewValues} cropImageUrl={cropPreviewImageUrl} />
+        <PreviewCard
+          template={template}
+          cropPreviewRef={cropPreviewRef}
+          onClose={() => setPreviewOpen(false)}
+          previewValues={previewValues}
+          cropImageUrl={cropPreviewImageUrl}
+          cropPreviewDisplaySize={cropPreviewDisplaySize}
+        />
       ) : !template?.cropArea && previewOpen ? (
         <div className="section-card quiet-card">
           <MousePointer2 size={30} />
@@ -1330,7 +1631,9 @@ function LayoutPage({
   setLayout,
   autoLayout,
   generatePdf,
+  openPdfForPrint,
   exportUrl,
+  isGeneratingPdf,
   previewOpen,
   setPreviewOpen,
   cropPreviewImageUrl,
@@ -1370,7 +1673,7 @@ function LayoutPage({
             <Rows3 size={16} /> {t("button.selectAll")}
           </button>
         </div>
-        <CsvRowPicker dataset={dataset} selectedRowIds={selectedRowIds} setSelectedRowIds={setSelectedRowIds} rowCopies={rowCopies} setRowCopies={setRowCopies} />
+        <CsvRowPicker dataset={dataset} selectedRowIds={selectedRowIds} setSelectedRowIds={setSelectedRowIds} rowCopies={rowCopies} setRowCopies={setRowCopies} t={t} />
         <div className="print-flow">
           <div className="choice-group">
             <h3>{t("print.paper")}</h3>
@@ -1413,9 +1716,14 @@ function LayoutPage({
           </details>
           {!previewOpen && <button onClick={() => setPreviewOpen(true)}><Eye size={16} /> {t("button.previewPrintSheet")}</button>}
           <div className="print-actions">
-            <button className="primary" onClick={generatePdf}><ArrowDownToLine size={16} /> {t("button.generatePdf")}</button>
-            <button onClick={() => window.print()}><FileText size={16} /> Print</button>
-            {exportUrl && <a className="button" href={exportUrl} download="template-print-output.pdf">{t("button.downloadPdf")}</a>}
+            <button className="primary" disabled={isGeneratingPdf} onClick={() => generatePdf({ downloadAfter: true }).catch((error) => window.alert(error.message))}>
+              {isGeneratingPdf ? <span className="spinner" aria-hidden="true" /> : <ArrowDownToLine size={16} />}
+              {isGeneratingPdf ? t("status.generatingPdf") : t("button.generatePdf")}
+            </button>
+            <button disabled={isGeneratingPdf} onClick={openPdfForPrint}>
+              {isGeneratingPdf ? <span className="spinner" aria-hidden="true" /> : <FileText size={16} />}
+              {isGeneratingPdf ? t("status.generatingPdf") : t("button.openPdfToPrint")}
+            </button>
           </div>
         </div>
       </div>
@@ -1444,8 +1752,8 @@ function LayoutPage({
   );
 }
 
-function CsvRowPicker({ dataset, selectedRowIds, setSelectedRowIds, rowCopies, setRowCopies }) {
-  if (!dataset) return <EmptyState title="No CSV selected" text="Choose a CSV dataset before selecting records to print." />;
+function CsvRowPicker({ dataset, selectedRowIds, setSelectedRowIds, rowCopies, setRowCopies, t }) {
+  if (!dataset) return <EmptyState title={t("print.noCsvSelected")} text={t("print.noCsvSelectedText")} />;
   const toggle = (rowId) => {
     setSelectedRowIds((current) =>
       current.includes(rowId) ? current.filter((id) => id !== rowId) : [...current, rowId],
@@ -1560,6 +1868,7 @@ function PrintSheetPreview({ layout, template, dataset, mapping, rows, rowCopies
                 cropImageUrl={cropImageUrl}
                 previewValues={previewValuesFromRow(template, dataset, mapping, previewRows[index].row)}
                 style={tileStyle}
+                fontScale={templateScale * scale}
               />
             )}
           </div>
@@ -1570,7 +1879,7 @@ function PrintSheetPreview({ layout, template, dataset, mapping, rows, rowCopies
   );
 }
 
-function PaperTemplateSlot({ template, cropImageUrl, previewValues, style }) {
+function PaperTemplateSlot({ template, cropImageUrl, previewValues, style, fontScale = 1 }) {
   return (
     <div className="paper-template" style={style}>
       {cropImageUrl && <img src={cropImageUrl} alt="" />}
@@ -1585,7 +1894,8 @@ function PaperTemplateSlot({ template, cropImageUrl, previewValues, style }) {
               width: `${variable.widthRatio * 100}%`,
               height: `${variable.heightRatio * 100}%`,
               color: variable.style.color,
-              fontSize: Math.max(6, variable.style.fontSize * 0.38),
+              backgroundColor: variable.style.backgroundColor || "transparent",
+              fontSize: Math.max(5, variable.style.fontSize * fontScale),
               fontWeight: variable.style.fontWeight,
               justifyContent: justify(variable.style.textAlign),
               alignItems: align(variable.style.verticalAlign),
@@ -1600,7 +1910,7 @@ function PaperTemplateSlot({ template, cropImageUrl, previewValues, style }) {
   );
 }
 
-function ExportPage({ template, dataset, generatePdf, exportUrl, cropPreviewRef }) {
+function ExportPage({ template, dataset, generatePdf, cropPreviewRef }) {
   return (
     <section className="page-grid">
       <div className="section-card export-panel">
@@ -1608,17 +1918,24 @@ function ExportPage({ template, dataset, generatePdf, exportUrl, cropPreviewRef 
         <h3>Generate printable PDF</h3>
         <p className="muted">
           Template: {template?.templateName ?? "None"}<br />
-          CSV: {dataset?.name ?? "No CSV selected"}
+          CSV: {dataset?.name ?? "-"}
         </p>
-        <button className="primary" onClick={generatePdf}>Generate PDF</button>
-        {exportUrl && <a className="button" href={exportUrl} download="template-print-output.pdf">Download PDF</a>}
+        <button className="primary" onClick={() => generatePdf({ downloadAfter: true })}>Generate PDF</button>
       </div>
       {template?.cropArea && <PreviewCard template={template} cropPreviewRef={cropPreviewRef} />}
     </section>
   );
 }
 
-function PreviewCard({ template, cropPreviewRef, embedded = false, onClose, previewValues = {}, cropImageUrl = "" }) {
+function PreviewCard({
+  template,
+  cropPreviewRef,
+  embedded = false,
+  onClose,
+  previewValues = {},
+  cropImageUrl = "",
+  cropPreviewDisplaySize = null,
+}) {
   return (
     <aside className={embedded ? "preview-card embedded-preview" : "section-card preview-card"}>
       <div className="panel-head">
@@ -1635,6 +1952,7 @@ function PreviewCard({ template, cropPreviewRef, embedded = false, onClose, prev
         setSelectedVariableId={() => {}}
         previewValues={previewValues}
         cropImageUrl={cropImageUrl}
+        cropPreviewDisplaySize={cropPreviewDisplaySize}
       />
     </aside>
   );
@@ -1798,11 +2116,142 @@ function expandRowEntries(entries, rowCopies) {
   return entries.flatMap((entry) => Array.from({ length: getRowCopyCount(rowCopies, entry.index) }, () => entry));
 }
 
-function fitFontSize(text, size, width, autoFit, font) {
+async function loadPdfFonts(outputDoc) {
+  const [regularBytes, boldBytes] = await Promise.all([
+    fetch(PDF_FONTS.regular).then(assertFontResponse).then((response) => response.arrayBuffer()),
+    fetch(PDF_FONTS.bold).then(assertFontResponse).then((response) => response.arrayBuffer()),
+  ]);
+  const regularFont = await outputDoc.embedFont(regularBytes, { subset: false });
+  const boldFont = await outputDoc.embedFont(boldBytes, { subset: false });
+  return { regularFont, boldFont };
+}
+
+function assertFontResponse(response) {
+  if (!response.ok) throw new Error("Could not load the bundled CJK font for PDF export.");
+  return response;
+}
+
+async function decodeCsvFile(file, selectedEncoding) {
+  const buffer = await file.arrayBuffer();
+  if (selectedEncoding !== "auto") {
+    return { text: decodeText(buffer, selectedEncoding), encoding: selectedEncoding, detected: false };
+  }
+
+  const utf8Text = decodeText(buffer, "utf-8");
+  if (isCleanUtf8Csv(utf8Text)) {
+    return { text: utf8Text, encoding: "utf-8", detected: true };
+  }
+
+  const candidates = ["utf-8", "shift_jis", "gb18030", "big5"];
+  const decoded = candidates
+    .map((encoding) => tryDecodeCsvCandidate(buffer, encoding))
+    .filter(Boolean);
+  if (!decoded.length) throw new Error("This browser could not decode the CSV file.");
+  decoded.sort((a, b) => b.score - a.score);
+  return { text: decoded[0].text, encoding: decoded[0].encoding, detected: true };
+}
+
+function tryDecodeCsvCandidate(buffer, encoding) {
+  try {
+    const text = decodeText(buffer, encoding);
+    return { text, encoding, score: scoreDecodedCsv(text) };
+  } catch {
+    return null;
+  }
+}
+
+function decodeText(buffer, encoding) {
+  const decoder = new TextDecoder(encoding, { fatal: false });
+  return decoder.decode(buffer).replace(/^\uFEFF/, "");
+}
+
+function scoreDecodedCsv(text) {
+  const replacementCount = (text.match(/\uFFFD/g) || []).length;
+  const cjkCount = (text.match(/[\u3040-\u30ff\u3400-\u9fff]/g) || []).length;
+  const kanaCount = (text.match(/[\u3040-\u30ff]/g) || []).length;
+  const commaCount = (text.match(/[,;\t]/g) || []).length;
+  const lineCount = (text.match(/\r\n|\n|\r/g) || []).length;
+  const mojibakeCount = (text.match(/[繧縺譁莨荳蜷鬟]/g) || []).length;
+  return cjkCount * 2 + kanaCount * 4 + commaCount + lineCount - replacementCount * 30 - mojibakeCount * 12;
+}
+
+function isCleanUtf8Csv(text) {
+  const replacementCount = (text.match(/\uFFFD/g) || []).length;
+  if (replacementCount > 0) return false;
+  const separators = (text.match(/[,;\t]/g) || []).length;
+  const lines = (text.match(/\r\n|\n|\r/g) || []).length;
+  const cjkCount = (text.match(/[\u3040-\u30ff\u3400-\u9fff]/g) || []).length;
+  return separators > 0 && lines > 0 && cjkCount > 0;
+}
+
+function encodingLabel(encoding = "utf-8") {
+  return CSV_ENCODINGS.find((item) => item.value === encoding)?.label ?? encoding.toUpperCase();
+}
+
+function fitFontSize(text, size, width, height, autoFit, font) {
   if (!autoFit) return size;
   let next = size;
-  while (next > 6 && font.widthOfTextAtSize(text, next) > width) next -= 1;
+  while (
+    next > 4
+    && (font.widthOfTextAtSize(text, next) > width || next * 1.12 > height)
+  ) {
+    next -= 0.5;
+  }
   return next;
+}
+
+function printWindowHtml(title, pdfUrl) {
+  if (!pdfUrl) {
+    return `<!doctype html>
+      <title>${escapeHtml(title)}</title>
+      <style>
+        html, body { margin: 0; font-family: sans-serif; }
+        .loading { align-items: center; display: flex; gap: 10px; padding: 24px; font-size: 22px; }
+        .spinner {
+          animation: spin 0.8s linear infinite;
+          border: 3px solid rgba(20, 31, 43, 0.18);
+          border-radius: 999px;
+          border-top-color: #146c5f;
+          display: inline-block;
+          height: 18px;
+          width: 18px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+      </style>
+      <div class="loading"><span class="spinner" aria-hidden="true"></span><span>Generating PDF...</span></div>`;
+  }
+  const safeUrl = escapeHtml(pdfUrl);
+  return `<!doctype html>
+    <title>${escapeHtml(title)}</title>
+    <style>
+      html, body { height: 100%; margin: 0; font-family: sans-serif; }
+      .bar { align-items: center; display: flex; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #dbe3ec; }
+      iframe { border: 0; height: calc(100% - 54px); width: 100%; }
+      a, button { font: inherit; padding: 7px 10px; }
+    </style>
+    <div class="bar">
+      <strong>Printable PDF</strong>
+      <a href="${safeUrl}" target="_blank" rel="noopener">Open PDF directly</a>
+      <button onclick="document.querySelector('iframe').contentWindow?.print()">Print</button>
+    </div>
+    <iframe src="${safeUrl}" title="Printable PDF"></iframe>`;
+}
+
+function downloadBlobUrl(url, fileName) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
 
 function alignX(box, textWidth, alignValue) {
@@ -1821,6 +2270,10 @@ function hexToRgb(hex) {
   const clean = hex.replace("#", "");
   const value = parseInt(clean, 16);
   return rgb(((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255);
+}
+
+function normalizeColor(value) {
+  return value && value !== "transparent" ? value : "#ffffff";
 }
 
 function justify(value) {

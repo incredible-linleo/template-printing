@@ -75,6 +75,7 @@ Main MVP requirements:
     * textAlign: left/center/right
     * verticalAlign: top/middle/bottom
     * color
+    * backgroundColor
     * autoFit: true/false
 * User can edit field name and style in a side panel or popup.
 * Save variable positions as normalized ratios relative to the cropped template canvas.
@@ -112,6 +113,7 @@ Main MVP requirements:
 "textAlign": "center",
 "verticalAlign": "middle",
 "color": "#000000",
+"backgroundColor": "transparent",
 "autoFit": true
 }
 }
@@ -225,6 +227,7 @@ Add debugging helpers if useful:
 * Crop screen should prioritize canvas space. Crop instructions/debug text should be compact and not occupy a large right-side panel.
 * Designer screen should have a clear Crop/Fields mode switch
 * Designer field inspector should be closeable and reopenable so users can maximize canvas space.
+* Designer field inspector must remain usable with many fields by using a compact, locally scrollable field list instead of forcing the whole page to scroll through every field.
 * CSV dataset library and preview screen
 * CSV preview should be hidden by default, shown only after the user clicks Preview, and closeable with an X button.
 * Mapping screen with template and CSV pulldowns at the top, an explicit Preview button, and a closeable preview panel.
@@ -234,7 +237,7 @@ Add debugging helpers if useful:
 * Copies should be set per selected CSV row in the records table, not as a global control in fine tuning.
 * Print page should include both Generate PDF and a browser Print button.
 * Fine tune layout should remain compact because the preview is the main working area.
-* Print screen includes Generate PDF and Download PDF; no separate Export screen in the MVP flow.
+* Print screen includes Generate PDF, which generates and downloads the PDF immediately, and Open PDF to print, which opens the generated PDF in the browser PDF viewer.
 
 14. Preferred development approach
     Please build this incrementally.
@@ -274,11 +277,17 @@ Please do not randomly patch bugs. Keep the PDF rendering and coordinate convers
 * Cropped template preview redraws when preview pages mount, preventing blank preview canvases after tab/page changes.
 * Multiple saved templates are supported locally. Each template stores its PDF source, crop area, and variables.
 * Multiple templates can be created from one selected source PDF via "New crop from selected PDF".
+* Saved templates/PDF sources can be deleted locally; deleting a template also removes related crop, variables, and mappings.
 * Variable box creation, drag/resize, normalized variable storage, visible field list, and style editing are implemented.
 * New variables default to matching key/display names such as field_1, field_2, and field_3.
+* Variable boxes can be resized smaller than crop boxes, and fields can be duplicated to preserve the same size, position style, and configuration for repeated fields.
 * Designer field inspector can be closed, reopened, and fields can be deleted directly from the field list.
 * UTF-8 CSV upload, parsing, preview, multiple saved CSV datasets, and variable-to-header mapping are implemented.
 * CSV preview is hidden by default, can be shown per dataset with a Preview button, and can be closed with an X button.
+* CSV upload auto-detects UTF-8, Shift-JIS/CP932, Big5, and GB18030/GBK so Japanese and Chinese CSV files can be decoded without a user-facing encoding selector.
+* CSV datasets store their decoded encoding metadata and show the encoding in the CSV list and preview UI.
+* CSV list rows are left-aligned file-style rows with clearer metadata and a secondary preview action.
+* Saved CSV datasets can be deleted locally; deleting a CSV also removes related mappings and resets active print-row selections when needed.
 * The permanent sidebar has been removed. The workflow bar is now the main navigation.
 * Top template/CSV context chips have been removed.
 * Flow order is now Source -> CSV -> Designer -> Mapping -> Print.
@@ -286,9 +295,16 @@ Please do not randomly patch bugs. Keep the PDF rendering and coordinate convers
 * Export has been merged into Print.
 * Source rows now expose Design/Edit design, Show crop, and Remove crop actions so users can clearly choose which PDF/template to work on.
 * Source row layout has been loosened with larger spacing and clearer action grouping.
-* Source row controls should stay on one line where space allows: rename, edit design, show crop, remove crop.
+* Source row controls should stay on one horizontal action row, using horizontal scroll on narrow/mobile screens instead of wrapping actions onto multiple lines.
+* On mobile, Source rows should stack into touch-friendly cards instead of forcing the desktop-wide row layout.
 * Designer remains a full page and includes a template selector pulldown so users can switch which template they are designing.
-* Mapping rows use a more balanced column ratio and calmer text scale.
+* Designer includes PDF zoom controls, scrollable canvas areas, and mobile/touch-oriented crop handles so users can crop and resize more accurately on small screens.
+* Designer field list uses compact rows with local scrolling so large templates with many variable fields remain manageable.
+* Cropped template previews render at higher internal resolution while keeping the same display size, reducing blur when users add and inspect variable fields.
+* Mapping page uses a two-column workspace: template variables/drop targets on the left and CSV fields on the right. Users can drag CSV fields onto variables or click a CSV field after selecting a target variable.
+* Mapping template-variable and CSV-field panels scroll independently so one side remains usable when the other has many items.
+* Mobile layout should use horizontal workflow navigation, stacked cards, full-width touch actions, independent list scrolling, and prioritize print preview before controls where practical.
+* Dark mode is deferred until the color system is converted to theme tokens instead of hardcoded colors.
 * Added `src/i18n/ui-text.json` with English and Japanese UI text sections and a top-right language selector.
 * Print Job mapping stores mappings by template + CSV pair, allowing the same template to be mapped differently for different CSV datasets.
 * Print Job includes an explicit Preview mapped template button and a closeable preview panel with mapped sample CSV values.
@@ -302,6 +318,11 @@ Please do not randomly patch bugs. Keep the PDF rendering and coordinate convers
 * Print size mode must work even when the user goes directly to Print without visiting Designer; PDF page size is loaded from the source PDF when the active template is loaded.
 * Updated Auto fit to compare portrait and landscape using the crop size and choose the orientation with more fitted items.
 * Export now computes source page size from the saved PDF during generation, so export works even after reloads or after navigating directly to Export.
+* PDF export embeds bundled Noto Sans CJK fonts via fontkit so Japanese and Chinese variable text can render correctly in generated PDFs.
+* Export font size scales from template space to printed output space and applies auto-fit against variable box width and height.
+* Generate PDF downloads the generated file immediately instead of creating a second Download PDF button.
+* Print action opens the generated PDF in the browser PDF viewer for printing instead of printing the whole app page.
+* Print action opens a placeholder tab immediately, then navigates it to the generated PDF after export so browsers are less likely to block the PDF viewer.
 * A4/A3 print layout controls, auto-fit row/column calculation, copies per record, and downloadable PDF export are implemented.
 * Production Dockerfile and nginx static serving config are included for cloud-ready deployment later.
 * GitHub Pages deployment is supported via Vite relative asset paths and `.github/workflows/deploy-pages.yml`, which builds the app and publishes `dist` with GitHub Actions.

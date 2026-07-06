@@ -55,7 +55,7 @@ export function pdfCropBoxFromRatios(rect, pdfWidth, pdfHeight) {
   };
 }
 
-export function resizedRect(initial, start, point, mode) {
+export function resizedRect(initial, start, point, mode, minSize = MIN_SIZE) {
   const dx = point.x - start.x;
   const dy = point.y - start.y;
   if (mode === "move") {
@@ -72,11 +72,11 @@ export function resizedRect(initial, start, point, mode) {
     next.y = initial.y + dy;
     next.height = initial.height - dy;
   }
-  return normalizeDragRect(next);
+  return normalizeDragRect(next, minSize);
 }
 
-export function clampRect(rect, width, height) {
-  const next = normalizeDragRect(rect);
+export function clampRect(rect, width, height, minSize = MIN_SIZE) {
+  const next = normalizeDragRect(rect, minSize);
   next.width = Math.min(next.width, width);
   next.height = Math.min(next.height, height);
   next.x = clamp(next.x, 0, width - next.width);
@@ -84,10 +84,10 @@ export function clampRect(rect, width, height) {
   return next;
 }
 
-function normalizeDragRect(rect) {
+function normalizeDragRect(rect, minSize = MIN_SIZE) {
   const next = { ...rect };
-  if (next.width < MIN_SIZE) next.width = MIN_SIZE;
-  if (next.height < MIN_SIZE) next.height = MIN_SIZE;
+  if (next.width < minSize) next.width = minSize;
+  if (next.height < minSize) next.height = minSize;
   return next;
 }
 
