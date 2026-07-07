@@ -1379,6 +1379,7 @@ function TemplateCanvas({
 
 function VariableEditor({ variable, updateVariable, updateVariableStyle, duplicateVariable, deleteVariable, t }) {
   if (!variable) return <p className="muted">{t("designer.selectVariableToEdit")}</p>;
+  const isBackgroundTransparent = !variable.style.backgroundColor || variable.style.backgroundColor === "transparent";
   return (
     <div className="field-editor">
       <div className="form-stack">
@@ -1393,13 +1394,40 @@ function VariableEditor({ variable, updateVariable, updateVariableStyle, duplica
       </div>
       <div className="swatch-row">
         <label>{t("field.textColor")}<input type="color" value={variable.style.color} onChange={(event) => updateVariableStyle({ color: event.target.value })} /></label>
-        <label>{t("field.boxBackground")}<input type="color" value={normalizeColor(variable.style.backgroundColor)} onChange={(event) => updateVariableStyle({ backgroundColor: event.target.value })} /></label>
-        <button type="button" onClick={() => updateVariableStyle({ backgroundColor: "transparent" })}>{t("field.clearBackground")}</button>
+        <div className="bg-color-control">
+          <span>{t("field.boxBackground")}</span>
+          <div className="bg-color-row">
+            <input
+              type="color"
+              value={normalizeColor(variable.style.backgroundColor)}
+              disabled={isBackgroundTransparent}
+              onChange={(event) => updateVariableStyle({ backgroundColor: event.target.value })}
+            />
+            <label className="bg-transparent-toggle">
+              <input
+                type="checkbox"
+                checked={isBackgroundTransparent}
+                onChange={(event) =>
+                  updateVariableStyle({
+                    backgroundColor: event.target.checked
+                      ? "transparent"
+                      : normalizeColor(variable.style.backgroundColor),
+                  })
+                }
+              />
+              <span>{t("field.noColor")}</span>
+            </label>
+          </div>
+        </div>
       </div>
       <label className="check"><input type="checkbox" checked={variable.style.autoFit} onChange={(event) => updateVariableStyle({ autoFit: event.target.checked })} /> {t("field.autoFit")}</label>
       <div className="field-editor-actions">
-        <button onClick={duplicateVariable}><Copy size={16} /> {t("button.duplicateVariable")}</button>
-        <button className="danger" onClick={() => deleteVariable(variable.id)}>{t("button.deleteVariable")}</button>
+        <button onClick={duplicateVariable} title={t("button.duplicate")} aria-label={t("button.duplicate")}>
+          <Copy size={16} /> <span className="action-label">{t("button.duplicate")}</span>
+        </button>
+        <button className="danger" onClick={() => deleteVariable(variable.id)} title={t("button.delete")} aria-label={t("button.delete")}>
+          <Trash2 size={16} /> <span className="action-label">{t("button.delete")}</span>
+        </button>
       </div>
     </div>
   );
