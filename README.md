@@ -2,6 +2,11 @@
 
 Browser-local MVP for reusable PDF-based variable printing.
 
+## Requirements
+
+- Node.js 24 LTS
+- npm 11+
+
 ## Run locally
 
 ```bash
