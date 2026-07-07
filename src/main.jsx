@@ -1350,6 +1350,23 @@ function TemplateCanvas({
   const previewStyle = cropPreviewDisplaySize
     ? { width: `${cropPreviewDisplaySize.width}px`, height: `${cropPreviewDisplaySize.height}px` }
     : undefined;
+  const cropSize = getCropPointSize(template);
+  const previewFontScale = cropSize && cropPreviewDisplaySize?.width
+    ? cropPreviewDisplaySize.width / cropSize.width
+    : 0.72;
+  if (!editable) {
+    return (
+      <div className="crop-preview" ref={cropPreviewRef} style={previewStyle}>
+        <PaperTemplateSlot
+          template={template}
+          cropImageUrl={cropImageUrl}
+          previewValues={previewValues}
+          style={{ width: "100%", height: "100%" }}
+          fontScale={previewFontScale}
+        />
+      </div>
+    );
+  }
   return (
     <div className="crop-preview" ref={cropPreviewRef} style={previewStyle}>
       {cropImageUrl ? <img className="crop-preview-image" src={cropImageUrl} alt="" /> : <canvas />}
@@ -1365,7 +1382,7 @@ function TemplateCanvas({
               height: `${variable.heightRatio * 100}%`,
               color: variable.style.color,
               backgroundColor: variable.style.backgroundColor || "rgba(255, 255, 255, 0.42)",
-              fontSize: Math.max(11, variable.style.fontSize * 0.72),
+              fontSize: Math.max(5, variable.style.fontSize * previewFontScale),
               fontWeight: variable.style.fontWeight,
               justifyContent: justify(variable.style.textAlign),
               alignItems: align(variable.style.verticalAlign),
