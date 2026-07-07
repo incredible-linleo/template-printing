@@ -1707,6 +1707,8 @@ function LayoutPage({
   t,
 }) {
   const update = (key, value) => setLayout((current) => ({ ...current, [key]: value }));
+  const [splitPercent, setSplitPercent] = useState(36);
+  const splitGridRef = useRef(null);
   const selectedCount = dataset ? selectedRowIds.filter((id) => Number(id) < dataset.rows.length).length : 0;
   const totalRows = dataset?.rows.length ?? 0;
   const allRowsSelected = totalRows > 0 && selectedCount >= totalRows;
@@ -1715,8 +1717,27 @@ function LayoutPage({
   const updatePair = (xKey, yKey, value) => setLayout((current) => ({ ...current, [xKey]: value, [yKey]: value }));
   const cropSize = getCropPointSize(template, pageSize);
   const printedSize = cropSize ? getPrintedTemplateSize(layout, cropSize) : null;
+  const startSplitDrag = (event) => {
+    if (!splitGridRef.current || window.innerWidth <= 1080) return;
+    event.preventDefault();
+    const bounds = splitGridRef.current.getBoundingClientRect();
+    const onMove = (moveEvent) => {
+      const raw = ((moveEvent.clientX - bounds.left) / bounds.width) * 100;
+      setSplitPercent(clampNumber(raw, 36, 88));
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
   return (
-    <section className={previewOpen ? "page-grid" : "page-grid single-column"}>
+    <section
+      ref={splitGridRef}
+      className={previewOpen ? "page-grid print-page-grid layout-split-grid" : "page-grid single-column"}
+      style={previewOpen ? { "--layout-left-width": `${splitPercent}%` } : undefined}
+    >
       <div className="section-card layout-section-card">
         <div className="section-head layout-section-head">
           <div>
@@ -1812,6 +1833,20 @@ function LayoutPage({
         </div>
       </div>
       {previewOpen ? (
+        <div
+          className="layout-splitter"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize print setup and preview panels"
+          aria-valuemin={36}
+          aria-valuemax={88}
+          aria-valuenow={Math.round(splitPercent)}
+          onMouseDown={startSplitDrag}
+        >
+          <span className="layout-splitter-handle" aria-hidden="true" />
+        </div>
+      ) : null}
+      {previewOpen ? (
       <div className="section-card preview-card">
         <div className="panel-head">
           <div>
@@ -1905,6 +1940,7 @@ function RangeControl({ label, value, min, max, onChange }) {
 
 function PrintSheetPreview({ layout, template, dataset, mapping, rows, rowCopies, cropImageUrl, pageSize, t }) {
   const [previewPage, setPreviewPage] = useState(1);
+  const [previewZoom, setPreviewZoom] = useState(() => (window.innerWidth > 900 ? 1.2 : 1));
   const selectedCount = rows.reduce((count, entry) => count + getRowCopyCount(rowCopies, entry.index), 0) || 1;
   const slots = Math.max(1, layout.rows * layout.columns);
   const pages = Math.max(1, Math.ceil(selectedCount / slots));
@@ -1912,9 +1948,17 @@ function PrintSheetPreview({ layout, template, dataset, mapping, rows, rowCopies
     setPreviewPage((current) => Math.min(current, pages));
   }, [pages]);
   const paper = orientedPaper(layout);
-  const basePreviewWidth = layout.orientation === "landscape" ? 560 : 420;
-  const maxPreviewWidth = Math.max(220, window.innerWidth - 52);
-  const previewWidth = Math.min(basePreviewWidth, maxPreviewWidth);
+  const isDesktopPreview = window.innerWidth > 900;
+  const basePreviewWidth = isDesktopPreview
+    ? layout.orientation === "landscape"
+      ? 760
+      : 580
+    : layout.orientation === "landscape"
+      ? 560
+      : 420;
+  const maxPreviewWidth = Math.max(220, window.innerWidth - (isDesktopPreview ? 140 : 52));
+  const zoomedWidth = basePreviewWidth * previewZoom;
+  const previewWidth = Math.min(zoomedWidth, maxPreviewWidth);
   const previewHeight = previewWidth * (paper.height / paper.width);
   const scale = previewWidth / paper.width;
   const cropSize = getCropPointSize(template, pageSize);
@@ -1937,29 +1981,38 @@ function PrintSheetPreview({ layout, template, dataset, mapping, rows, rowCopies
   };
   return (
     <div className="sheet-preview-wrap">
-      <div className="preview-page-controls">
-        <button disabled={previewPage <= 1} onClick={() => setPreviewPage((page) => Math.max(1, page - 1))}>
-          <ChevronLeft size={16} /> {t("designer.previous")}
-        </button>
-        <span>{t("source.page")} {previewPage} / {pages}</span>
-        <button disabled={previewPage >= pages} onClick={() => setPreviewPage((page) => Math.min(pages, page + 1))}>
-          {t("designer.next")} <ChevronRight size={16} />
-        </button>
+      <div className="preview-controls-row">
+        <div className="preview-page-controls">
+          <button disabled={previewPage <= 1} onClick={() => setPreviewPage((page) => Math.max(1, page - 1))}>
+            <ChevronLeft size={16} /> {t("designer.previous")}
+          </button>
+          <span>{t("source.page")} {previewPage} / {pages}</span>
+          <button disabled={previewPage >= pages} onClick={() => setPreviewPage((page) => Math.min(pages, page + 1))}>
+            {t("designer.next")} <ChevronRight size={16} />
+          </button>
+        </div>
+        <div className="preview-zoom-controls" aria-label="Preview zoom controls">
+          <button type="button" onClick={() => setPreviewZoom((value) => Math.max(0.7, Number((value - 0.1).toFixed(2))))}>-</button>
+          <span>{Math.round(previewZoom * 100)}%</span>
+          <button type="button" onClick={() => setPreviewZoom((value) => Math.min(1.9, Number((value + 0.1).toFixed(2))))}>+</button>
+        </div>
       </div>
-      <div className="sheet-preview" style={style}>
-        {Array.from({ length: Math.min(slots, 24) }).map((_, index) => (
-          <div key={index} className={`paper-slot ${previewRows[index] ? "filled" : ""}`}>
-            {previewRows[index] && template?.cropArea && (
-              <PaperTemplateSlot
-                template={template}
-                cropImageUrl={cropImageUrl}
-                previewValues={previewValuesFromRow(template, dataset, mapping, previewRows[index].row)}
-                style={tileStyle}
-                fontScale={templateScale * scale}
-              />
-            )}
-          </div>
-        ))}
+      <div className="sheet-preview-scroll">
+        <div className="sheet-preview" style={style}>
+          {Array.from({ length: Math.min(slots, 24) }).map((_, index) => (
+            <div key={index} className={`paper-slot ${previewRows[index] ? "filled" : ""}`}>
+              {previewRows[index] && template?.cropArea && (
+                <PaperTemplateSlot
+                  template={template}
+                  cropImageUrl={cropImageUrl}
+                  previewValues={previewValuesFromRow(template, dataset, mapping, previewRows[index].row)}
+                  style={tileStyle}
+                  fontScale={templateScale * scale}
+                />
+              )}
+            </div>
+          ))}
+        </div>
       </div>
       <p className="muted">{t("print.previewSummary", { paper: layout.paperSize, orientation: t(`print.orientation.${layout.orientation}`), rows: layout.rows, columns: layout.columns, pages })}</p>
     </div>
