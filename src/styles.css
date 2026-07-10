@@ -468,6 +468,32 @@ button:not(.primary) .spinner {
   padding: 18px;
 }
 
+.setup-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 18px;
+}
+
+.setup-grid > .section-card {
+  min-width: 0;
+}
+
+.setup-grid .template-row {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 14px;
+}
+
+.setup-grid .template-row-main,
+.setup-grid .template-name-input,
+.setup-grid .template-row-actions {
+  grid-column: 1;
+}
+
+.setup-grid .template-row-actions {
+  flex-wrap: wrap;
+}
+
 .page-grid {
   grid-template-columns: minmax(0, 1fr) minmax(clamp(280px, 32vw, 460px), 0.72fr);
 }
@@ -1769,6 +1795,7 @@ th {
 @media (max-width: 1080px) {
   .app-shell,
   .page-grid,
+  .setup-grid,
   .editor-layout,
   .crop-layout,
   .csv-row,
@@ -2293,6 +2320,7 @@ th {
   .page-header,
   .flow-bar,
   .page-grid,
+  .setup-grid,
   .section-card,
   .preview-card {
     max-width: 100%;
@@ -2318,6 +2346,7 @@ th {
   }
 
   .page-grid,
+  .setup-grid,
   .editor-layout,
   .crop-layout {
     padding: 8px;

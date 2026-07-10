@@ -70,16 +70,16 @@ const MAPPING_FUNCTIONS = [
 ];
 
 const NAV = [
-  { id: "templates", titleKey: "page.templates.title", flowKey: "nav.source", icon: Layers },
-  { id: "csv", titleKey: "page.csv.title", flowKey: "nav.csv", icon: Table },
+  { id: "setup", titleKey: "page.setup.title", flowKey: "nav.setup", icon: Layers },
+  { id: "templateLibrary", titleKey: "page.templateLibrary.title", flowKey: "nav.templateLibrary", icon: FileText },
   { id: "designer", titleKey: "page.designer.title", flowKey: "nav.designer", icon: MousePointer2 },
   { id: "mapping", titleKey: "page.mapping.title", flowKey: "nav.mapping", icon: Database },
   { id: "layout", titleKey: "page.printSetup.title", flowKey: "nav.print", icon: Grid2X2 },
 ];
 
 const FLOW = [
-  { id: "templates", labelKey: "nav.source" },
-  { id: "csv", labelKey: "nav.csv" },
+  { id: "setup", labelKey: "nav.setup" },
+  { id: "templateLibrary", labelKey: "nav.templateLibrary" },
   { id: "designer", labelKey: "nav.designer" },
   { id: "mapping", labelKey: "nav.mapping" },
   { id: "layout", labelKey: "nav.print" },
@@ -117,7 +117,7 @@ function makeTranslator(language) {
 }
 
 function App() {
-  const [view, setView] = useState("templates");
+  const [view, setView] = useState("setup");
   const [designerMode, setDesignerMode] = useState("crop");
   const [language, setLanguage] = useState(() => localStorage.getItem("template-print-language") || "en");
   const [templates, setTemplates] = useState([]);
@@ -560,7 +560,7 @@ function App() {
           [nextKey]: autoMapping(activeTemplate.variables, fields, current[nextKey]),
         }));
       }
-      setView("csv");
+      setView("setup");
       setStatus(t("status.csvSaved", { count: result.data.length, encoding: encodingLabel(decoded.encoding) }));
     } catch (error) {
       setStatus(error.message);
@@ -684,6 +684,57 @@ function App() {
       setRowCopies(nextDataset ? nextDataset.rows.reduce((copies, _row, index) => ({ ...copies, [index]: 1 }), {}) : {});
     }
     setStatus(t("status.csvDeleted", { name: dataset.name }));
+  }
+
+  function exportTemplateFile(templateId) {
+    const template = templates.find((item) => item.templateId === templateId);
+    if (!template) return;
+    const packageData = {
+      format: "printtpl-json-v1",
+      exportedAt: new Date().toISOString(),
+      template: {
+        templateName: template.templateName,
+        sourcePdf: template.sourcePdf,
+        cropArea: template.cropArea,
+        variables: template.variables,
+      },
+    };
+    const blob = new Blob([JSON.stringify(packageData, null, 2)], { type: "application/json" });
+    const fileName = `${safeFileName(template.templateName || "template")}.printtpl`;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function importTemplateFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const imported = parsed?.template;
+      if (!imported?.sourcePdf?.dataBase64 || !Array.isArray(imported?.variables)) {
+        throw new Error(t("status.templateImportInvalid"));
+      }
+      const nextTemplate = {
+        templateId: crypto.randomUUID(),
+        templateName: imported.templateName || file.name.replace(/\.printtpl$/i, ""),
+        sourcePdf: imported.sourcePdf,
+        cropArea: imported.cropArea ?? null,
+        variables: imported.variables,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      setTemplates((items) => [nextTemplate, ...items]);
+      setActiveTemplateId(nextTemplate.templateId);
+      setStatus(t("status.templateImported", { name: nextTemplate.templateName }));
+    } catch (error) {
+      setStatus(error.message || t("status.templateImportInvalid"));
+    }
   }
 
   async function generatePdf({ openAfter = false, downloadAfter = false } = {}) {
@@ -835,8 +886,8 @@ function App() {
           <FlowBar view={view} setView={setView} flowStatus={flowStatus} t={t} />
         </div>
 
-        {view === "templates" && (
-          <TemplatesPage
+        {view === "setup" && (
+          <SetupPage
             templates={templates}
             activeTemplateId={activeTemplateId}
             setActiveTemplateId={setActiveTemplateId}
@@ -847,6 +898,23 @@ function App() {
             openDesignerForTemplate={openDesignerForTemplate}
             removeCrop={removeCrop}
             deleteTemplate={deleteTemplate}
+            datasets={csvDatasets}
+            activeCsvId={activeCsvId}
+            setActiveCsvId={setActiveCsvId}
+            previewCsvId={previewCsvId}
+            setPreviewCsvId={setPreviewCsvId}
+            onCsvUpload={handleCsvUpload}
+            deleteCsvDataset={deleteCsvDataset}
+            t={t}
+          />
+        )}
+        {view === "templateLibrary" && (
+          <TemplateLibraryPage
+            templates={templates}
+            activeTemplateId={activeTemplateId}
+            setActiveTemplateId={setActiveTemplateId}
+            exportTemplateFile={exportTemplateFile}
+            importTemplateFile={importTemplateFile}
             t={t}
           />
         )}
@@ -885,18 +953,6 @@ function App() {
             updateVariableStyle={updateSelectedVariableStyle}
             cropPreviewImageUrl={cropPreviewImageUrl}
             cropPreviewDisplaySize={cropPreviewDisplaySize}
-            t={t}
-          />
-        )}
-        {view === "csv" && (
-          <CsvPage
-            datasets={csvDatasets}
-            activeCsvId={activeCsvId}
-            setActiveCsvId={setActiveCsvId}
-            previewCsvId={previewCsvId}
-            setPreviewCsvId={setPreviewCsvId}
-            onCsvUpload={handleCsvUpload}
-            deleteCsvDataset={deleteCsvDataset}
             t={t}
           />
         )}
@@ -953,6 +1009,188 @@ function App() {
         )}
       </main>
     </div>
+  );
+}
+
+function TemplateLibraryPage({ templates, activeTemplateId, setActiveTemplateId, exportTemplateFile, importTemplateFile, t }) {
+  return (
+    <section className="page-grid single-column">
+      <div className="section-card">
+        <div className="section-head">
+          <div>
+            <h3>{t("page.templateLibrary.title")}</h3>
+            <p className="muted">{t("templates.packageHelp")}</p>
+          </div>
+          <label className="button primary">
+            <Upload size={16} /> {t("button.uploadTemplate")}
+            <input type="file" accept=".printtpl,application/json" onChange={importTemplateFile} />
+          </label>
+        </div>
+        <div className="template-list">
+          {templates.length === 0 && <EmptyState title={t("source.noTemplates")} text={t("source.noTemplatesText")} />}
+          {templates.map((template) => (
+            <article key={template.templateId} className={`template-row ${template.templateId === activeTemplateId ? "active" : ""}`}>
+              <button className="template-row-main" onClick={() => setActiveTemplateId(template.templateId)}>
+                <span>{template.sourcePdf.fileName}</span>
+                <span>
+                  {t("source.page")} {template.sourcePdf.pageNumber ?? 1} · {template.cropArea ? t("source.cropSaved") : t("source.needsCrop")} · {template.variables.length} {t("source.variables")}
+                </span>
+              </button>
+              <input className="template-name-input" value={template.templateName} readOnly />
+              <div className="template-row-actions">
+                <button onClick={() => exportTemplateFile(template.templateId)}>
+                  <ArrowDownToLine size={16} /> {t("button.saveTemplate")}
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SetupPage({
+  templates,
+  activeTemplateId,
+  setActiveTemplateId,
+  updateTemplate,
+  onPdfUpload,
+  onCreateTemplateFromActivePdf,
+  canCreateFromActivePdf,
+  openDesignerForTemplate,
+  removeCrop,
+  deleteTemplate,
+  datasets,
+  activeCsvId,
+  setActiveCsvId,
+  previewCsvId,
+  setPreviewCsvId,
+  onCsvUpload,
+  deleteCsvDataset,
+  t,
+}) {
+  const previewDataset = datasets.find((dataset) => dataset.id === previewCsvId);
+  return (
+    <section className="setup-grid">
+      <div className="section-card">
+        <div className="section-head">
+          <div>
+            <h3>{t("page.templates.title")}</h3>
+            <p className="muted">{t("templates.savedLocalText")}</p>
+          </div>
+          <label className="button primary">
+            <Plus size={16} /> {t("button.uploadPdf")}
+            <input type="file" accept="application/pdf" onChange={onPdfUpload} />
+          </label>
+          <button disabled={!canCreateFromActivePdf} onClick={onCreateTemplateFromActivePdf}>
+            <Plus size={16} /> {t("button.newCrop")}
+          </button>
+        </div>
+        <div className="template-list">
+          {templates.length === 0 && <EmptyState title={t("source.noTemplates")} text={t("source.noTemplatesText")} />}
+          {templates.map((template) => (
+            <article key={template.templateId} className={`template-row ${template.templateId === activeTemplateId ? "active" : ""}`}>
+              <button className="template-row-main" onClick={() => setActiveTemplateId(template.templateId)}>
+                <span>{template.sourcePdf.fileName}</span>
+                <span>
+                  {t("source.page")} {template.sourcePdf.pageNumber ?? 1} · {template.cropArea ? t("source.cropSaved") : t("source.needsCrop")} · {template.variables.length} {t("source.variables")}
+                </span>
+              </button>
+              <input
+                className="template-name-input"
+                value={template.templateName}
+                onChange={(event) => updateTemplate(template.templateId, { templateName: event.target.value })}
+              />
+              <div className="template-row-actions">
+                <button
+                  aria-label={template.cropArea ? t("source.editDesign") : t("source.designCrop")}
+                  title={template.cropArea ? t("source.editDesign") : t("source.designCrop")}
+                  onClick={() => openDesignerForTemplate(template.templateId, template.cropArea ? "fields" : "crop")}
+                >
+                  <MousePointer2 size={16} /> {template.cropArea ? t("source.editDesign") : t("source.designCrop")}
+                </button>
+                <button
+                  aria-label={t("source.showCrop")}
+                  title={t("source.showCrop")}
+                  disabled={!template.cropArea}
+                  onClick={() => openDesignerForTemplate(template.templateId, "fields")}
+                >
+                  <Eye size={16} /> {t("source.showCrop")}
+                </button>
+                <button
+                  aria-label={t("source.removeCrop")}
+                  className="danger"
+                  title={t("source.removeCrop")}
+                  disabled={!template.cropArea}
+                  onClick={() => removeCrop(template.templateId)}
+                >
+                  <X size={16} /> {t("source.removeCrop")}
+                </button>
+                <button
+                  aria-label={t("button.deleteTemplate")}
+                  className="danger"
+                  title={t("button.deleteTemplate")}
+                  onClick={() => deleteTemplate(template.templateId)}
+                >
+                  <Trash2 size={16} /> {t("button.deleteTemplate")}
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <div className="section-card">
+        <div className="section-head">
+          <div>
+            <h3>{t("page.csv.title")}</h3>
+            <p className="muted">{t("csv.savedDatasetsText")}</p>
+          </div>
+          <div className="csv-upload-tools">
+            <label className="button primary">
+              <Upload size={16} /> {t("button.uploadCsv")}
+              <input type="file" accept=".csv,text/csv" onChange={onCsvUpload} />
+            </label>
+          </div>
+        </div>
+        <div className="csv-list">
+          {datasets.length === 0 && <EmptyState title={t("csv.noDatasets")} text={t("csv.noDatasetsText")} />}
+          {datasets.map((dataset) => (
+            <article key={dataset.id} className={`csv-row ${dataset.id === activeCsvId ? "active" : ""}`}>
+              <button className="csv-row-main" onClick={() => setActiveCsvId(dataset.id)}>
+                <strong>{dataset.name}</strong>
+                <span>
+                  {dataset.fileName} · {dataset.rows.length} rows · {dataset.headers.length} columns · {encodingLabel(dataset.encoding)}
+                  {dataset.encodingDetected ? ` ${t("csv.autoDetected")}` : ""}
+                </span>
+              </button>
+              <div className="csv-row-actions">
+                <button className="preview-button" onClick={() => setPreviewCsvId(previewCsvId === dataset.id ? "" : dataset.id)}>
+                  <Eye size={16} />
+                  {previewCsvId === dataset.id ? t("button.close") : t("button.preview")}
+                </button>
+                <button className="danger" onClick={() => deleteCsvDataset(dataset.id)}>
+                  <Trash2 size={16} /> {t("button.deleteCsv")}
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+        {previewCsvId ? (
+          <div className="embedded-preview">
+            <div className="panel-head">
+              <div>
+                <h3>{t("preview.csv")}</h3>
+                <p className="muted">{previewDataset?.name}</p>
+              </div>
+              <button className="icon-button" title={t("preview.closeCsv")} onClick={() => setPreviewCsvId("")}><X size={16} /></button>
+            </div>
+            <CsvPreview dataset={previewDataset} t={t} />
+          </div>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -2213,6 +2451,8 @@ function mappingKey(templateId, csvId) {
 function getFlowStatus(template, dataset, mapping, selectedRowIds) {
   const mappedCount = template?.variables.filter((variable) => mapping?.[variable.id]).length ?? 0;
   return {
+    setup: template && dataset ? "done" : template || dataset ? "warning" : "waiting",
+    templateLibrary: template ? "done" : "waiting",
     templates: template ? "done" : "waiting",
     designer: template?.cropArea && template.variables.length ? "done" : template?.cropArea ? "warning" : "waiting",
     csv: dataset ? "done" : "waiting",
@@ -2220,6 +2460,13 @@ function getFlowStatus(template, dataset, mapping, selectedRowIds) {
     layout: selectedRowIds.length ? "done" : "warning",
     export: template?.cropArea && dataset && selectedRowIds.length ? "ready" : "waiting",
   };
+}
+
+function safeFileName(name) {
+  return String(name || "template")
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function getPrintableRows(dataset, selectedRowIds) {
