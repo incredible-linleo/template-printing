@@ -57,6 +57,17 @@ if (typeof Map.prototype.getOrInsertComputed !== "function") {
   };
 }
 
+// Some browsers do not yet ship TypedArray.prototype.toHex used by pdfjs-dist 5.x.
+if (typeof Uint8Array.prototype.toHex !== "function") {
+  Uint8Array.prototype.toHex = function toHex() {
+    let out = "";
+    for (let i = 0; i < this.length; i += 1) {
+      out += this[i].toString(16).padStart(2, "0");
+    }
+    return out;
+  };
+}
+
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.mjs",
   import.meta.url,
@@ -86,6 +97,7 @@ const MAPPING_FUNCTIONS = [
   { key: `${MAPPING_FUNCTION_PREFIX}today_yyyy_mm_dd`, labelKey: "mapping.function.todayYyyyMmDd" },
   { key: `${MAPPING_FUNCTION_PREFIX}today_yyyymmdd`, labelKey: "mapping.function.todayYyyymmdd" },
 ];
+const APP_VERSION = "v1.0001";
 
 const NAV = [
   { id: "setup", titleKey: "page.setup.title", flowKey: "nav.setup", icon: Layers },
@@ -894,7 +906,10 @@ function App() {
             <div className="page-heading">
               <FileText size={28} />
               <div>
-                <p className="eyebrow">{t("app.title")}</p>
+                <p className="eyebrow">
+                  {t("app.title")}
+                  <span className="app-version">{APP_VERSION}</span>
+                </p>
                 <h2>{pageTitle}</h2>
               </div>
             </div>
