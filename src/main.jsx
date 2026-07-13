@@ -97,7 +97,7 @@ const MAPPING_FUNCTIONS = [
   { key: `${MAPPING_FUNCTION_PREFIX}today_yyyy_mm_dd`, labelKey: "mapping.function.todayYyyyMmDd" },
   { key: `${MAPPING_FUNCTION_PREFIX}today_yyyymmdd`, labelKey: "mapping.function.todayYyyymmdd" },
 ];
-const APP_VERSION = "v1.0005";
+const APP_VERSION = "v1.0006";
 
 const NAV = [
   { id: "setup", titleKey: "page.setup.title", flowKey: "nav.setup", icon: Layers },

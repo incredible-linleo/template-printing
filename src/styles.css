@@ -896,7 +896,9 @@ button:not(.primary) .spinner {
 }
 
 .pdf-frame {
-  background: #aeb8c4;
+  background: #ffffff;
+  border: 1px solid #dbe3ec;
+  overflow: hidden;
   line-height: 0;
   margin: 12px auto;
   position: relative;
@@ -904,6 +906,7 @@ button:not(.primary) .spinner {
 }
 
 .pdf-frame canvas {
+  background: #ffffff;
   display: block;
 }
 
