@@ -68,11 +68,6 @@ if (typeof Uint8Array.prototype.toHex !== "function") {
   };
 }
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  "./pdfjs-worker-compat.mjs",
-  import.meta.url,
-).toString();
-
 const PAPER_SIZES = {
   A4: { width: 595.28, height: 841.89 },
   A3: { width: 841.89, height: 1190.55 },
@@ -97,7 +92,7 @@ const MAPPING_FUNCTIONS = [
   { key: `${MAPPING_FUNCTION_PREFIX}today_yyyy_mm_dd`, labelKey: "mapping.function.todayYyyyMmDd" },
   { key: `${MAPPING_FUNCTION_PREFIX}today_yyyymmdd`, labelKey: "mapping.function.todayYyyymmdd" },
 ];
-const APP_VERSION = "v1.0002";
+const APP_VERSION = "v1.0003";
 
 const NAV = [
   { id: "setup", titleKey: "page.setup.title", flowKey: "nav.setup", icon: Layers },
@@ -620,7 +615,7 @@ function App() {
   async function getActiveTemplatePageSize() {
     if (!activeTemplate?.sourcePdf?.dataBase64) return null;
     if (pageSize) return pageSize;
-    const loadingTask = pdfjsLib.getDocument({ data: base64ToArrayBuffer(activeTemplate.sourcePdf.dataBase64).slice(0) });
+    const loadingTask = loadPdfJsDocumentTask(base64ToArrayBuffer(activeTemplate.sourcePdf.dataBase64).slice(0));
     const loaded = await loadingTask.promise;
     const page = await loaded.getPage(activeTemplate.sourcePdf.pageNumber ?? 1);
     const viewport = page.getViewport({ scale: 1 });
@@ -2631,14 +2626,18 @@ async function loadPdfFonts(outputDoc) {
 
 async function loadPdfJsDocumentWithFallback(arrayBuffer) {
   try {
-    const loaded = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+    const loaded = await loadPdfJsDocumentTask(new Uint8Array(arrayBuffer)).promise;
     return { loaded, normalizedBytes: null };
   } catch (originalError) {
     const normalizedBytes = await tryNormalizePdfBytes(arrayBuffer);
     if (!normalizedBytes) throw originalError;
-    const loaded = await pdfjsLib.getDocument({ data: new Uint8Array(normalizedBytes) }).promise;
+    const loaded = await loadPdfJsDocumentTask(new Uint8Array(normalizedBytes)).promise;
     return { loaded, normalizedBytes };
   }
+}
+
+function loadPdfJsDocumentTask(data) {
+  return pdfjsLib.getDocument({ data, disableWorker: true });
 }
 
 async function tryNormalizePdfBytes(arrayBuffer) {
