@@ -97,7 +97,8 @@ const MAPPING_FUNCTIONS = [
   { key: `${MAPPING_FUNCTION_PREFIX}today_yyyy_mm_dd`, labelKey: "mapping.function.todayYyyyMmDd" },
   { key: `${MAPPING_FUNCTION_PREFIX}today_yyyymmdd`, labelKey: "mapping.function.todayYyyymmdd" },
 ];
-const APP_VERSION = "v1.0006";
+const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/svg+xml", "image/webp"]);
+const APP_VERSION = "v1.0100";
 
 const NAV = [
   { id: "setup", titleKey: "page.setup.title", flowKey: "nav.setup", icon: Layers },
@@ -166,6 +167,7 @@ function App() {
   const [pageCount, setPageCount] = useState(0);
   const [pageSize, setPageSize] = useState(null);
   const [pdfZoom, setPdfZoom] = useState(1);
+  const [fieldZoom, setFieldZoom] = useState(1);
   const [renderBox, setRenderBox] = useState({ width: 0, height: 0, scale: 1 });
   const [cropRect, setCropRect] = useState(null);
   const [cropPreviewImageUrl, setCropPreviewImageUrl] = useState("");
@@ -215,16 +217,51 @@ function App() {
   }, [status]);
 
   useEffect(() => {
+    const buttons = Array.from(document.querySelectorAll("button, .button"));
+    buttons.forEach((element) => {
+      if (element.getAttribute("title")) return;
+      const text = (element.textContent || "").replace(/\s+/g, " ").trim();
+      if (text) {
+        element.setAttribute("title", buildButtonTooltip(text, t));
+        return;
+      }
+      const aria = element.getAttribute("aria-label") || "";
+      if (aria.trim()) {
+        element.setAttribute("title", buildButtonTooltip(aria.trim(), t));
+        return;
+      }
+      element.setAttribute("title", t("common.buttonAction"));
+    });
+  }, [t, view, templates, csvDatasets, activeTemplateId, activeCsvId, status, mappingPreviewOpen, printPreviewOpen]);
+
+  useEffect(() => {
     let cancelled = false;
-    async function loadPdf() {
+    async function loadSource() {
       setPdfDoc(null);
       setPageCount(0);
       setPageSize(null);
-      if (!activeTemplate?.sourcePdf?.dataBase64) return;
-      const bytes = base64ToArrayBuffer(activeTemplate.sourcePdf.dataBase64);
+      const source = activeTemplate?.sourcePdf;
+      if (!source?.dataBase64) return;
+      const sourceType = source.sourceType ?? "pdf";
+      if (sourceType === "image") {
+        const sourceUrl = sourceDataUrl(source);
+        const image = await loadImageElement(sourceUrl);
+        if (cancelled) return;
+        const nextPageSize = { width: image.naturalWidth, height: image.naturalHeight };
+        setPageCount(1);
+        setPageNumber(1);
+        setPageSize(nextPageSize);
+        if (!source.pageSize || source.pageSize.width !== nextPageSize.width || source.pageSize.height !== nextPageSize.height) {
+          updateTemplate(activeTemplate.templateId, {
+            sourcePdf: { ...source, pageNumber: 1, pageSize: nextPageSize },
+          });
+        }
+        return;
+      }
+      const bytes = base64ToArrayBuffer(source.dataBase64);
       const { loaded, normalizedBytes } = await loadPdfJsDocumentWithFallback(bytes.slice(0));
       if (cancelled) return;
-      const nextPageNumber = activeTemplate.sourcePdf.pageNumber ?? 1;
+      const nextPageNumber = source.pageNumber ?? 1;
       const page = await loaded.getPage(nextPageNumber);
       const viewport = page.getViewport({ scale: 1 });
       const nextPageSize = { width: viewport.width, height: viewport.height };
@@ -236,18 +273,18 @@ function App() {
       if (normalizedBytes && activeTemplate?.templateId) {
         updateTemplate(activeTemplate.templateId, {
           sourcePdf: {
-            ...activeTemplate.sourcePdf,
+            ...source,
             dataBase64: arrayBufferToBase64(normalizedBytes),
           },
         });
       }
-      if (!activeTemplate.sourcePdf.pageSize) {
+      if (!source.pageSize) {
         updateTemplate(activeTemplate.templateId, {
-          sourcePdf: { ...activeTemplate.sourcePdf, pageSize: nextPageSize },
+          sourcePdf: { ...source, pageSize: nextPageSize },
         });
       }
     }
-    loadPdf().catch((error) => setStatus(error.message));
+    loadSource().catch((error) => setStatus(error.message));
     return () => {
       cancelled = true;
     };
@@ -256,15 +293,27 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     async function renderPage() {
-      if (!pdfDoc || !canvasRef.current) return;
-      const page = await pdfDoc.getPage(pageNumber);
-      const baseViewport = page.getViewport({ scale: 1 });
+      if (!canvasRef.current || !activeTemplate?.sourcePdf?.dataBase64) return;
+      const sourceType = activeTemplate.sourcePdf.sourceType ?? "pdf";
+      const sourcePageSize = sourceType === "image"
+        ? (activeTemplate.sourcePdf.pageSize ?? pageSize)
+        : null;
+      if (sourceType === "pdf" && !pdfDoc) return;
+      if (sourceType === "image" && !sourcePageSize) return;
+      let page = null;
+      let resolvedBaseViewport = { width: sourcePageSize?.width ?? 0, height: sourcePageSize?.height ?? 0 };
+      if (sourceType === "pdf") {
+        page = await pdfDoc.getPage(pageNumber);
+        resolvedBaseViewport = page.getViewport({ scale: 1 });
+      }
       const cropWorkspaceReserve = view === "designer" && designerMode === "crop" ? 380 : 620;
       const minCanvasWidth = window.innerWidth < 720 ? Math.max(240, window.innerWidth - 32) : 420;
       const maxWidth = Math.min(1240, Math.max(minCanvasWidth, window.innerWidth - cropWorkspaceReserve));
-      const fitScale = Math.max(0.35, Math.min(1.8, maxWidth / baseViewport.width));
+      const fitScale = Math.max(0.35, Math.min(1.8, maxWidth / resolvedBaseViewport.width));
       const scale = Math.max(0.35, Math.min(3, fitScale * pdfZoom));
-      const viewport = page.getViewport({ scale });
+      const viewport = sourceType === "pdf"
+        ? page.getViewport({ scale })
+        : { width: resolvedBaseViewport.width * scale, height: resolvedBaseViewport.height * scale };
       const canvas = canvasRef.current;
       const context = canvas.getContext("2d");
       const dpr = window.devicePixelRatio || 1;
@@ -273,9 +322,15 @@ function App() {
       canvas.style.width = `${viewport.width}px`;
       canvas.style.height = `${viewport.height}px`;
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
-      await page.render({ canvasContext: context, viewport }).promise;
+      if (sourceType === "pdf") {
+        await page.render({ canvasContext: context, viewport }).promise;
+      } else {
+        const image = await loadImageElement(sourceDataUrl(activeTemplate.sourcePdf));
+        context.clearRect(0, 0, viewport.width, viewport.height);
+        context.drawImage(image, 0, 0, viewport.width, viewport.height);
+      }
       if (cancelled) return;
-      const nextPageSize = { width: baseViewport.width, height: baseViewport.height };
+      const nextPageSize = { width: resolvedBaseViewport.width, height: resolvedBaseViewport.height };
       const nextRenderBox = { width: viewport.width, height: viewport.height, scale };
       setPageSize(nextPageSize);
       setRenderBox(nextRenderBox);
@@ -285,32 +340,51 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [view, designerMode, pdfDoc, pageNumber, activeTemplate?.cropArea, pdfZoom]);
+  }, [
+    view,
+    designerMode,
+    pdfDoc,
+    pageNumber,
+    activeTemplateId,
+    activeTemplate?.sourcePdf?.sourceType,
+    activeTemplate?.sourcePdf?.dataBase64,
+    activeTemplate?.sourcePdf?.pageSize?.width,
+    activeTemplate?.sourcePdf?.pageSize?.height,
+    activeTemplate?.cropArea,
+    pageSize?.width,
+    pageSize?.height,
+    pdfZoom,
+  ]);
 
   useEffect(() => {
     requestAnimationFrame(() => drawCropPreview());
-  }, [view, activeTemplate?.cropArea, activeTemplate?.variables, renderBox, pdfDoc, pageNumber]);
+  }, [view, designerMode, fieldZoom, activeTemplate?.cropArea, activeTemplate?.variables, renderBox, pdfDoc, pageNumber]);
 
   function setCropPreviewNode(node) {
     cropPreviewRef.current = node;
     if (node) requestAnimationFrame(() => drawCropPreview());
   }
 
-  async function handlePdfUpload(event) {
+  async function handleTemplateSourceUpload(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (file.type !== "application/pdf") {
-      setStatus(t("status.uploadPdfOnly"));
+    const isPdf = file.type === "application/pdf";
+    const isImage = IMAGE_MIME_TYPES.has(file.type);
+    if (!isPdf && !isImage) {
+      setStatus("Unsupported source file. Use PDF, JPG, PNG, SVG, or WebP.");
       return;
     }
     const bytes = await file.arrayBuffer();
     const templateId = crypto.randomUUID();
+    const sourceType = isPdf ? "pdf" : "image";
     const template = {
       templateId,
-      templateName: file.name.replace(/\.pdf$/i, ""),
+      templateName: file.name.replace(/\.[^.]+$/i, ""),
       sourcePdf: {
         fileName: file.name,
+        sourceType,
+        mimeType: file.type,
         pageNumber: 1,
         dataBase64: arrayBufferToBase64(bytes),
       },
@@ -329,7 +403,7 @@ function App() {
     setSelectedVariableId("");
     setDesignerMode("crop");
     setView("designer");
-    setStatus(t("status.pdfUploaded"));
+    setStatus(isPdf ? t("status.pdfUploaded") : "Image uploaded. Draw a crop area to continue.");
   }
 
   function updateTemplate(templateId, patch) {
@@ -345,14 +419,15 @@ function App() {
       setStatus(t("status.selectPdfFirst"));
       return;
     }
+    const sourceType = activeTemplate.sourcePdf.sourceType ?? "pdf";
     const existingForPdf = templates.filter((template) => template.sourcePdf.fileName === activeTemplate.sourcePdf.fileName).length;
     const templateId = crypto.randomUUID();
     const template = {
       templateId,
-      templateName: `${activeTemplate.sourcePdf.fileName.replace(/\.pdf$/i, "")} ${t("template.cropSuffix", { count: existingForPdf + 1 })}`,
+      templateName: `${activeTemplate.sourcePdf.fileName.replace(/\.[^.]+$/i, "")} ${t("template.cropSuffix", { count: existingForPdf + 1 })}`,
       sourcePdf: {
         ...activeTemplate.sourcePdf,
-        pageNumber,
+        pageNumber: sourceType === "pdf" ? pageNumber : 1,
       },
       cropArea: null,
       variables: [],
@@ -371,9 +446,10 @@ function App() {
   function saveCrop() {
     if (!activeTemplate || !cropRect || !renderBox.width || !renderBox.height) return;
     const cropArea = normalizeRect(cropRect, renderBox.width, renderBox.height);
+    const sourceType = activeTemplate.sourcePdf?.sourceType ?? "pdf";
     updateTemplate(activeTemplate.templateId, {
       cropArea,
-      sourcePdf: { ...activeTemplate.sourcePdf, pageNumber, pageSize },
+      sourcePdf: { ...activeTemplate.sourcePdf, pageNumber: sourceType === "pdf" ? pageNumber : 1, pageSize },
     });
     setDesignerMode("fields");
     setView("designer");
@@ -445,54 +521,79 @@ function App() {
   }
 
   async function drawCropPreview() {
-    if (!pdfDoc || !activeTemplate?.cropArea) {
+    if (!activeTemplate?.cropArea || !activeTemplate?.sourcePdf?.dataBase64) {
       setCropPreviewImageUrl("");
       setCropPreviewDisplaySize(null);
       return;
     }
     try {
-      const previewPageNumber = activeTemplate.sourcePdf?.pageNumber ?? pageNumber;
-      const page = await pdfDoc.getPage(previewPageNumber);
-    const baseViewport = page.getViewport({ scale: 1 });
-    const cropPixels = ratioRectToPixels(activeTemplate.cropArea, baseViewport.width, baseViewport.height);
-    const minPreviewWidth = window.innerWidth < 720 ? Math.max(220, window.innerWidth - 44) : 360;
-    const displayWidth = Math.min(980, Math.max(minPreviewWidth, cropPixels.width * Math.max(renderBox.scale, 1)));
-    const displayScale = displayWidth / cropPixels.width;
-    const qualityScale = Math.max(2, Math.min(4, window.devicePixelRatio || 2));
-    const scale = displayScale * qualityScale;
-    const viewport = page.getViewport({ scale });
-    const offscreen = document.createElement("canvas");
-    offscreen.width = viewport.width;
-    offscreen.height = viewport.height;
-    await page.render({ canvasContext: offscreen.getContext("2d"), viewport }).promise;
-    const targetWidth = Math.round(cropPixels.width * scale);
-    const targetHeight = Math.round(cropPixels.height * scale);
-    const displayHeight = Math.round(cropPixels.height * displayScale);
-    const cropCanvas = document.createElement("canvas");
-    cropCanvas.width = targetWidth;
-    cropCanvas.height = targetHeight;
-    const cropContext = cropCanvas.getContext("2d");
-    cropContext.drawImage(
-      offscreen,
-      cropPixels.x * scale,
-      cropPixels.y * scale,
-      cropPixels.width * scale,
-      cropPixels.height * scale,
-      0,
-      0,
-      targetWidth,
-      targetHeight,
-    );
-    setCropPreviewDisplaySize({ width: Math.round(displayWidth), height: displayHeight });
-    setCropPreviewImageUrl(cropCanvas.toDataURL("image/png"));
-    const canvas = cropPreviewRef.current?.querySelector("canvas");
-    if (!canvas) return;
-    canvas.width = targetWidth;
-    canvas.height = targetHeight;
-    canvas.style.width = `${Math.round(displayWidth)}px`;
-    canvas.style.height = `${displayHeight}px`;
-    const context = canvas.getContext("2d");
-    context.clearRect(0, 0, canvas.width, canvas.height);
+      const sourceType = activeTemplate.sourcePdf.sourceType ?? "pdf";
+      let baseViewport = null;
+      let renderToCanvas = null;
+      if (sourceType === "pdf") {
+        if (!pdfDoc) {
+          setCropPreviewImageUrl("");
+          setCropPreviewDisplaySize(null);
+          return;
+        }
+        const previewPageNumber = activeTemplate.sourcePdf?.pageNumber ?? pageNumber;
+        const page = await pdfDoc.getPage(previewPageNumber);
+        baseViewport = page.getViewport({ scale: 1 });
+        renderToCanvas = async (targetCanvas, scale) => {
+          const viewport = page.getViewport({ scale });
+          targetCanvas.width = viewport.width;
+          targetCanvas.height = viewport.height;
+          await page.render({ canvasContext: targetCanvas.getContext("2d"), viewport }).promise;
+        };
+      } else {
+        const image = await loadImageElement(sourceDataUrl(activeTemplate.sourcePdf));
+        baseViewport = { width: image.naturalWidth, height: image.naturalHeight };
+        renderToCanvas = async (targetCanvas, scale) => {
+          targetCanvas.width = Math.round(baseViewport.width * scale);
+          targetCanvas.height = Math.round(baseViewport.height * scale);
+          const targetContext = targetCanvas.getContext("2d");
+          targetContext.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
+          targetContext.drawImage(image, 0, 0, targetCanvas.width, targetCanvas.height);
+        };
+      }
+      const cropPixels = ratioRectToPixels(activeTemplate.cropArea, baseViewport.width, baseViewport.height);
+      const previewZoom = designerMode === "fields" ? fieldZoom : 1;
+      const minPreviewWidth = window.innerWidth < 720 ? Math.max(220, window.innerWidth - 44) : 360;
+      const baseWidth = cropPixels.width * Math.max(renderBox.scale, 1) * previewZoom;
+      const displayWidth = Math.min(1400, Math.max(minPreviewWidth, baseWidth));
+      const displayScale = displayWidth / cropPixels.width;
+      const qualityScale = Math.max(2, Math.min(4, window.devicePixelRatio || 2));
+      const scale = displayScale * qualityScale;
+      const offscreen = document.createElement("canvas");
+      await renderToCanvas(offscreen, scale);
+      const targetWidth = Math.round(cropPixels.width * scale);
+      const targetHeight = Math.round(cropPixels.height * scale);
+      const displayHeight = Math.round(cropPixels.height * displayScale);
+      const cropCanvas = document.createElement("canvas");
+      cropCanvas.width = targetWidth;
+      cropCanvas.height = targetHeight;
+      const cropContext = cropCanvas.getContext("2d");
+      cropContext.drawImage(
+        offscreen,
+        cropPixels.x * scale,
+        cropPixels.y * scale,
+        cropPixels.width * scale,
+        cropPixels.height * scale,
+        0,
+        0,
+        targetWidth,
+        targetHeight,
+      );
+      setCropPreviewDisplaySize({ width: Math.round(displayWidth), height: displayHeight });
+      setCropPreviewImageUrl(cropCanvas.toDataURL("image/png"));
+      const canvas = cropPreviewRef.current?.querySelector("canvas");
+      if (!canvas) return;
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      canvas.style.width = `${Math.round(displayWidth)}px`;
+      canvas.style.height = `${displayHeight}px`;
+      const context = canvas.getContext("2d");
+      context.clearRect(0, 0, canvas.width, canvas.height);
       context.drawImage(cropCanvas, 0, 0);
     } catch (error) {
       setCropPreviewImageUrl("");
@@ -619,6 +720,8 @@ function App() {
 
   async function getActiveTemplatePageSize() {
     if (!activeTemplate?.sourcePdf?.dataBase64) return null;
+    const sourceType = activeTemplate.sourcePdf.sourceType ?? "pdf";
+    if (sourceType === "image") return activeTemplate.sourcePdf.pageSize ?? pageSize;
     if (pageSize) return pageSize;
     const loadingTask = loadPdfJsDocumentTask(base64ToArrayBuffer(activeTemplate.sourcePdf.dataBase64).slice(0));
     const loaded = await loadingTask.promise;
@@ -660,7 +763,10 @@ function App() {
   function openDesignerForTemplate(templateId, mode = "crop") {
     const template = templates.find((item) => item.templateId === templateId);
     setActiveTemplateId(templateId);
-    if (template?.sourcePdf?.pageNumber) setPageNumber(template.sourcePdf.pageNumber);
+    if (template?.sourcePdf?.pageNumber) {
+      const sourceType = template.sourcePdf.sourceType ?? "pdf";
+      setPageNumber(sourceType === "pdf" ? template.sourcePdf.pageNumber : 1);
+    }
     setSelectedVariableId("");
     setDesignerMode(mode);
     setView("designer");
@@ -697,7 +803,8 @@ function App() {
       setCropRect(null);
       setCropPreviewImageUrl("");
       setPdfDoc(null);
-      setPageNumber(nextTemplate?.sourcePdf?.pageNumber ?? 1);
+      const nextType = nextTemplate?.sourcePdf?.sourceType ?? "pdf";
+      setPageNumber(nextType === "pdf" ? (nextTemplate?.sourcePdf?.pageNumber ?? 1) : 1);
       setPageCount(0);
       setPageSize(null);
     }
@@ -778,6 +885,11 @@ function App() {
   async function generatePdf({ openAfter = false, downloadAfter = false } = {}) {
     if (!activeTemplate?.sourcePdf?.dataBase64 || !activeTemplate.cropArea) {
       setStatus(t("status.selectTemplateBeforeExport"));
+      return "";
+    }
+    const sourceType = activeTemplate.sourcePdf.sourceType ?? "pdf";
+    if (sourceType !== "pdf") {
+      setStatus("PDF output currently supports PDF template sources only. Image-source export will be added next.");
       return "";
     }
     if (!activeTemplate.variables.length) {
@@ -933,7 +1045,7 @@ function App() {
             activeTemplateId={activeTemplateId}
             setActiveTemplateId={setActiveTemplateId}
             updateTemplate={updateTemplate}
-            onPdfUpload={handlePdfUpload}
+            onPdfUpload={handleTemplateSourceUpload}
             onCreateTemplateFromActivePdf={createTemplateFromActivePdf}
             canCreateFromActivePdf={Boolean(activeTemplate?.sourcePdf?.dataBase64)}
             openDesignerForTemplate={openDesignerForTemplate}
@@ -974,6 +1086,8 @@ function App() {
             cropDebug={cropDebug}
             pdfZoom={pdfZoom}
             setPdfZoom={setPdfZoom}
+            fieldZoom={fieldZoom}
+            setFieldZoom={setFieldZoom}
             pageNumber={pageNumber}
             pageCount={pageCount}
             setPageNumber={setPageNumber}
@@ -981,7 +1095,7 @@ function App() {
             beginCropDrag={beginCropDrag}
             saveCrop={saveCrop}
             clearCrop={() => setCropRect(null)}
-            onPdfUpload={handlePdfUpload}
+            onPdfUpload={handleTemplateSourceUpload}
             cropPreviewRef={setCropPreviewNode}
             selectedVariableId={selectedVariableId}
             setSelectedVariableId={setSelectedVariableId}
@@ -1120,9 +1234,9 @@ function SetupPage({
             <h3>{t("page.templates.title")}</h3>
             <p className="muted">{t("templates.savedLocalText")}</p>
           </div>
-          <label className="button primary">
-            <Plus size={16} /> {t("button.uploadPdf")}
-            <input type="file" accept="application/pdf" onChange={onPdfUpload} />
+          <label className="button primary" title={t("source.allowedFormatsHint")} aria-label={t("source.allowedFormatsHint")}>
+            <Plus size={16} /> {t("button.addSource")}
+            <input type="file" accept="application/pdf,image/jpeg,image/png,image/svg+xml,image/webp" onChange={onPdfUpload} />
           </label>
           <button disabled={!canCreateFromActivePdf} onClick={onCreateTemplateFromActivePdf}>
             <Plus size={16} /> {t("button.newCrop")}
@@ -1241,7 +1355,7 @@ function SidebarActions({ onPdfUpload, onCreateTemplateFromActivePdf, canCreateF
       <div className="quick-actions">
         <label className="button primary icon-button" title="Upload a new PDF">
           <Upload size={16} />
-          <input type="file" accept="application/pdf" onChange={onPdfUpload} />
+          <input type="file" accept="application/pdf,image/jpeg,image/png,image/svg+xml,image/webp" onChange={onPdfUpload} />
         </label>
         <button className="icon-button" title="Create another crop template from the selected PDF" disabled={!canCreateFromActivePdf} onClick={onCreateTemplateFromActivePdf}>
           <Plus size={16} />
@@ -1288,7 +1402,7 @@ function LibraryPanel(props) {
       <div className="quick-actions">
         <label className="button primary icon-button" title="Upload a new PDF">
           <Upload size={16} />
-          <input type="file" accept="application/pdf" onChange={onPdfUpload} />
+          <input type="file" accept="application/pdf,image/jpeg,image/png,image/svg+xml,image/webp" onChange={onPdfUpload} />
         </label>
         <button className="icon-button" title="Create another crop template from the selected PDF" disabled={!canCreateFromActivePdf} onClick={onCreateTemplateFromActivePdf}>
           <Plus size={16} />
@@ -1363,7 +1477,12 @@ function FlowBar({ view, setView, flowStatus, t }) {
       {FLOW.map((step, index) => {
         const state = flowStatus[step.id] ?? "waiting";
         return (
-          <button key={step.id} className={`${view === step.id ? "active" : ""} ${state}`} onClick={() => setView(step.id)}>
+          <button
+            key={step.id}
+            className={`${view === step.id ? "active" : ""} ${state}`}
+            title={t("tooltip.openPage", { page: t(step.labelKey) })}
+            onClick={() => setView(step.id)}
+          >
             <span className="flow-index">{index + 1}</span>
             {t(step.labelKey)}
           </button>
@@ -1396,7 +1515,7 @@ function TemplatesPage({
           </div>
           <label className="button primary">
             <Plus size={16} /> {t("button.uploadPdf")}
-            <input type="file" accept="application/pdf" onChange={onPdfUpload} />
+            <input type="file" accept="application/pdf,image/jpeg,image/png,image/svg+xml,image/webp" onChange={onPdfUpload} />
           </label>
           <button disabled={!canCreateFromActivePdf} onClick={onCreateTemplateFromActivePdf}>
             <Plus size={16} /> {t("button.newCrop")}
@@ -1474,6 +1593,8 @@ function DesignerPage(props) {
     cropDebug,
     pdfZoom,
     setPdfZoom,
+    fieldZoom,
+    setFieldZoom,
     pageNumber,
     pageCount,
     setPageNumber,
@@ -1537,6 +1658,11 @@ function DesignerPage(props) {
           ) : (
             <>
               <button className="primary" onClick={addField}><Plus size={16} /> {t("designer.addField")}</button>
+              <div className="zoom-controls" aria-label="Fields zoom controls">
+                <button onClick={() => setFieldZoom((zoom) => Math.max(0.5, Number((zoom - 0.1).toFixed(2))))}>-</button>
+                <span>{Math.round(fieldZoom * 100)}%</span>
+                <button onClick={() => setFieldZoom((zoom) => Math.min(3, Number((zoom + 0.1).toFixed(2))))}>+</button>
+              </div>
               <span className="meta">{t("designer.savedFields", { count: template.variables.length })}</span>
               {!inspectorOpen && <button onClick={() => setInspectorOpen(true)}><ListChecks size={16} /> {t("designer.fieldsPanel")}</button>}
             </>
@@ -2437,7 +2563,7 @@ function EmptyUpload({ onPdfUpload, t }) {
       <p>{t("empty.startWithPdfText")}</p>
       <label className="button primary">
         <Upload size={18} /> {t("button.uploadPdf")}
-        <input type="file" accept="application/pdf" onChange={onPdfUpload} />
+        <input type="file" accept="application/pdf,image/jpeg,image/png,image/svg+xml,image/webp" onChange={onPdfUpload} />
       </label>
     </div>
   );
@@ -2615,6 +2741,20 @@ function orientedPaper(layout) {
   return paper;
 }
 
+function sourceDataUrl(source) {
+  const mimeType = source?.mimeType || "application/octet-stream";
+  return `data:${mimeType};base64,${source?.dataBase64 || ""}`;
+}
+
+function loadImageElement(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Failed to load image source."));
+    image.src = url;
+  });
+}
+
 function expandRowEntries(entries, rowCopies) {
   return entries.flatMap((entry) => Array.from({ length: getRowCopyCount(rowCopies, entry.index) }, () => entry));
 }
@@ -2784,6 +2924,14 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function buildButtonTooltip(label, t) {
+  const text = String(label || "").trim();
+  if (!text) return t("common.buttonAction");
+  const hasJapanese = /[\u3040-\u30ff\u3400-\u9fff]/.test(text);
+  if (hasJapanese) return `クリックして${text}します。`;
+  return `Click to ${text.toLowerCase()}.`;
 }
 
 function alignX(box, textWidth, alignValue) {

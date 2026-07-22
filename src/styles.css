@@ -809,7 +809,9 @@ button:not(.primary) .spinner {
 
 .local-toolbar {
   align-items: center;
+  background: #ffffff;
   border-bottom: 1px solid #e6ebf1;
+  box-shadow: 0 2px 0 rgba(20, 40, 74, 0.04);
   display: flex;
   flex-wrap: wrap;
   gap: 8px 10px;
