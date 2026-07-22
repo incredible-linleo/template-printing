@@ -800,6 +800,17 @@ button:not(.primary) .spinner {
   white-space: nowrap;
 }
 
+.uniform-action-button {
+  align-items: center;
+  display: inline-flex;
+  height: 40px;
+  justify-content: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 168px;
+}
+
 .canvas-card {
   max-height: calc(100vh - 210px);
   min-width: 0;

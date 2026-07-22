@@ -1234,11 +1234,11 @@ function SetupPage({
             <h3>{t("page.templates.title")}</h3>
             <p className="muted">{t("templates.savedLocalText")}</p>
           </div>
-          <label className="button primary" title={t("source.allowedFormatsHint")} aria-label={t("source.allowedFormatsHint")}>
+          <label className="button primary uniform-action-button" title={t("source.allowedFormatsHint")} aria-label={t("source.allowedFormatsHint")}>
             <Plus size={16} /> {t("button.addSource")}
             <input type="file" accept="application/pdf,image/jpeg,image/png,image/svg+xml,image/webp" onChange={onPdfUpload} />
           </label>
-          <button disabled={!canCreateFromActivePdf} onClick={onCreateTemplateFromActivePdf}>
+          <button className="uniform-action-button" disabled={!canCreateFromActivePdf} onClick={onCreateTemplateFromActivePdf}>
             <Plus size={16} /> {t("button.newCrop")}
           </button>
         </div>
