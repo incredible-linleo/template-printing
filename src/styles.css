@@ -1844,8 +1844,7 @@ button:not(.primary) .spinner {
   }
 }
 
-.paper-slot,
-.sheet-preview span {
+.paper-slot {
   background: #f1f4f8;
   border: 0;
   border-radius: 4px;
@@ -1857,8 +1856,7 @@ button:not(.primary) .spinner {
   position: relative;
 }
 
-.paper-slot.filled,
-.sheet-preview span.filled {
+.paper-slot.filled {
   background: #ffffff;
   border: 0;
 }
