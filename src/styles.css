@@ -1,4 +1,20 @@
-﻿:root {
+﻿@font-face {
+  font-family: "NotoSansCJKjpUI";
+  src: url("/fonts/NotoSansCJKjp-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "NotoSansCJKjpUI";
+  src: url("/fonts/NotoSansCJKjp-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
   color: #14284a;
   background: #eef2f6;
   font-size: 15px;
@@ -8,6 +24,13 @@
     sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+}
+
+html[data-ui-lang="ja"],
+html:lang(ja) {
+  font-family:
+    "NotoSansCJKjpUI", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo",
+    sans-serif;
 }
 
 * {
@@ -982,28 +1005,52 @@ button:not(.primary) .spinner {
   touch-action: none;
 }
 
-.nw {
+.handle-nw {
   cursor: nwse-resize;
   left: -10px;
   top: -10px;
 }
 
-.ne {
+.handle-n {
+  cursor: ns-resize;
+  left: calc(50% - 9px);
+  top: -10px;
+}
+
+.handle-ne {
   cursor: nesw-resize;
   right: -10px;
   top: -10px;
 }
 
-.sw {
+.handle-e {
+  cursor: ew-resize;
+  right: -10px;
+  top: calc(50% - 9px);
+}
+
+.handle-se {
+  bottom: -10px;
+  cursor: nwse-resize;
+  right: -10px;
+}
+
+.handle-s {
+  bottom: -10px;
+  cursor: ns-resize;
+  left: calc(50% - 9px);
+}
+
+.handle-sw {
   bottom: -10px;
   cursor: nesw-resize;
   left: -10px;
 }
 
-.se {
-  bottom: -10px;
-  cursor: nwse-resize;
-  right: -10px;
+.handle-w {
+  cursor: ew-resize;
+  left: -10px;
+  top: calc(50% - 9px);
 }
 
 .inspector {
@@ -1062,10 +1109,18 @@ button:not(.primary) .spinner {
   cursor: move;
   display: flex;
   line-height: 1.1;
-  overflow: hidden;
+  overflow: visible;
   padding: 4px;
   position: absolute;
   word-break: break-word;
+}
+
+.variable-text,
+.paper-variable-text {
+  display: inline-block;
+  max-width: 100%;
+  transform-origin: center center;
+  white-space: pre-wrap;
 }
 
 .variable-box.selected {

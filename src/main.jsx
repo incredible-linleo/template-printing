@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 import Papa from "papaparse";
-import { PDFDocument, rgb } from "pdf-lib";
+import { PDFDocument, degrees, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import {
   ArrowDownToLine,
@@ -99,6 +99,7 @@ const MAPPING_FUNCTIONS = [
 ];
 const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/svg+xml", "image/webp"]);
 const APP_VERSION = "v1.0102";
+const RESIZE_HANDLES = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 
 const NAV = [
   { id: "setup", titleKey: "page.setup.title", flowKey: "nav.setup", icon: Layers },
@@ -122,6 +123,7 @@ const defaultStyle = {
   fontWeight: "normal",
   textAlign: "center",
   verticalAlign: "middle",
+  textRotation: 0,
   color: "#000000",
   backgroundColor: "transparent",
   autoFit: true,
@@ -212,6 +214,12 @@ function App() {
 
   useEffect(() => {
     localStorage.setItem("template-print-language", language);
+  }, [language]);
+
+  useEffect(() => {
+    const doc = document.documentElement;
+    doc.lang = language === "ja" ? "ja" : "en";
+    doc.setAttribute("data-ui-lang", language === "ja" ? "ja" : "en");
   }, [language]);
 
   useEffect(() => {
@@ -381,7 +389,14 @@ function App() {
       if (!clipboardItems.length) return;
 
       const imageItem = clipboardItems.find((item) => item.kind === "file" && IMAGE_MIME_TYPES.has(item.type));
-      if (!imageItem) {
+      const clipboardFiles = Array.from(event.clipboardData?.files ?? []);
+      let pastedFile = clipboardFiles.find((file) => IMAGE_MIME_TYPES.has(file.type)) ?? null;
+
+      if (!pastedFile && imageItem) {
+        pastedFile = imageItem.getAsFile();
+      }
+
+      if (!pastedFile) {
         setStatus(t("status.clipboardImageMissing"));
         return;
       }
@@ -393,15 +408,13 @@ function App() {
         "image/svg+xml": "svg",
         "image/webp": "webp",
       };
-      const extension = extMap[imageItem.type] ?? "png";
-      imageItem
-        .getAsFile()
-        ?.arrayBuffer()
-        .then((bytes) => {
-          const pastedFile = new File([bytes], `pasted-source.${extension}`, { type: imageItem.type });
-          return ingestTemplateSourceFile(pastedFile);
-        })
-        .catch((error) => setStatus(error?.message || t("status.sourceUploadUnsupported")));
+      const mimeType = pastedFile.type || imageItem?.type || "image/png";
+      const extension = extMap[mimeType] ?? "png";
+      if (!pastedFile.name) {
+        pastedFile = new File([pastedFile], `pasted-source.${extension}`, { type: mimeType });
+      }
+
+      ingestTemplateSourceFile(pastedFile).catch((error) => setStatus(error?.message || t("status.sourceUploadUnsupported")));
     }
 
     window.addEventListener("paste", onPaste);
@@ -1031,6 +1044,7 @@ function App() {
         const value = resolveMappedValue(source, row);
         const text = String(value !== "" ? value : variable.displayName ?? "");
         const drawFont = variable.style.fontWeight === "bold" ? boldFont : regularFont;
+        const textRotation = normalizeTextRotation(variable.style.textRotation);
         const box = {
           x: x + variable.xRatio * itemWidth,
           y: y + itemHeight - (variable.yRatio + variable.heightRatio) * itemHeight,
@@ -1038,7 +1052,10 @@ function App() {
           height: variable.heightRatio * itemHeight,
         };
         const baseSize = Math.max(4, variable.style.fontSize * scale);
-        const size = fitFontSize(text, baseSize, box.width, box.height, variable.style.autoFit, drawFont);
+        const fitWidth = textRotation === 90 || textRotation === 270 ? box.height : box.width;
+        const fitHeight = textRotation === 90 || textRotation === 270 ? box.width : box.height;
+        const size = fitFontSize(text, baseSize, fitWidth, fitHeight, variable.style.autoFit, drawFont);
+        const textWidth = drawFont.widthOfTextAtSize(text, size);
         if (variable.style.backgroundColor && variable.style.backgroundColor !== "transparent") {
           outputPage.drawRectangle({
             x: box.x,
@@ -1048,11 +1065,13 @@ function App() {
             color: hexToRgb(variable.style.backgroundColor),
           });
         }
+        const textOrigin = rotatedTextOrigin(box, textWidth, size, variable.style.textAlign, variable.style.verticalAlign, textRotation);
         outputPage.drawText(text, {
-          x: alignX(box, drawFont.widthOfTextAtSize(text, size), variable.style.textAlign),
-          y: alignY(box, size, variable.style.verticalAlign),
+          x: textOrigin.x,
+          y: textOrigin.y,
           size,
           font: drawFont,
+          rotate: degrees(textRotation),
           color: hexToRgb(variable.style.color),
         });
       });
@@ -1863,10 +1882,9 @@ function DesignerPage(props) {
 function CropBox({ rect, onDrag }) {
   return (
     <div className="crop-box" style={rectStyle(rect)} onPointerDown={(event) => onDrag(event, "move")}>
-      <span className="handle nw" onPointerDown={(event) => onDrag(event, "nw")} />
-      <span className="handle ne" onPointerDown={(event) => onDrag(event, "ne")} />
-      <span className="handle sw" onPointerDown={(event) => onDrag(event, "sw")} />
-      <span className="handle se" onPointerDown={(event) => onDrag(event, "se")} />
+      {RESIZE_HANDLES.map((mode) => (
+        <span key={mode} className={`handle handle-${mode}`} onPointerDown={(event) => onDrag(event, mode)} />
+      ))}
     </div>
   );
 }
@@ -1926,8 +1944,19 @@ function TemplateCanvas({
             onPointerDown={(event) => editable && beginVariableDrag(event, variable.id, "move")}
             onClick={() => editable && setSelectedVariableId(variable.id)}
           >
-            {previewValues[variable.id] ?? variable.displayName}
-            {editable && <span className="handle se" onPointerDown={(event) => beginVariableDrag(event, variable.id, "se")} />}
+            <span
+              className="variable-text"
+              style={{ transform: `rotate(${normalizeTextRotation(variable.style.textRotation)}deg)` }}
+            >
+              {previewValues[variable.id] ?? variable.displayName}
+            </span>
+            {editable && selectedVariableId === variable.id && RESIZE_HANDLES.map((mode) => (
+              <span
+                key={mode}
+                className={`handle handle-${mode}`}
+                onPointerDown={(event) => beginVariableDrag(event, variable.id, mode)}
+              />
+            ))}
           </div>
         ))}
       </div>
@@ -1947,6 +1976,7 @@ function VariableEditor({ variable, updateVariable, updateVariableStyle, duplica
       <div className="form-grid compact-form">
         <label>{t("field.fontSize")}<input type="number" min="4" value={variable.style.fontSize} onChange={(event) => updateVariableStyle({ fontSize: Number(event.target.value) })} /></label>
         <label>{t("field.weight")}<select value={variable.style.fontWeight} onChange={(event) => updateVariableStyle({ fontWeight: event.target.value })}><option value="normal">{t("field.weight.normal")}</option><option value="bold">{t("field.weight.bold")}</option></select></label>
+        <label>{t("field.rotation")}<select value={normalizeTextRotation(variable.style.textRotation)} onChange={(event) => updateVariableStyle({ textRotation: Number(event.target.value) })}><option value="0">{t("field.rotation.0")}</option><option value="90">{t("field.rotation.90")}</option><option value="180">{t("field.rotation.180")}</option><option value="270">{t("field.rotation.270")}</option></select></label>
         <label>{t("field.textAlign")}<select value={variable.style.textAlign} onChange={(event) => updateVariableStyle({ textAlign: event.target.value })}><option value="left">{t("field.align.left")}</option><option value="center">{t("field.align.center")}</option><option value="right">{t("field.align.right")}</option></select></label>
         <label>{t("field.verticalAlign")}<select value={variable.style.verticalAlign} onChange={(event) => updateVariableStyle({ verticalAlign: event.target.value })}><option value="top">{t("field.vertical.top")}</option><option value="middle">{t("field.vertical.middle")}</option><option value="bottom">{t("field.vertical.bottom")}</option></select></label>
       </div>
@@ -2617,7 +2647,12 @@ function PaperTemplateSlot({ template, cropImageUrl, previewValues, style, fontS
               textAlign: variable.style.textAlign,
             }}
           >
-            {previewValues[variable.id] ?? variable.displayName}
+            <span
+              className="paper-variable-text"
+              style={{ transform: `rotate(${normalizeTextRotation(variable.style.textRotation)}deg)` }}
+            >
+              {previewValues[variable.id] ?? variable.displayName}
+            </span>
           </div>
         ))}
       </div>
@@ -3074,6 +3109,46 @@ function alignY(box, size, alignValue) {
   if (alignValue === "top") return box.y + box.height - size;
   if (alignValue === "middle") return box.y + (box.height - size) / 2;
   return box.y;
+}
+
+function normalizeTextRotation(value) {
+  const rotation = Number(value);
+  if (!Number.isFinite(rotation)) return 0;
+  const normalized = ((Math.round(rotation / 90) * 90) % 360 + 360) % 360;
+  return normalized;
+}
+
+function alignBoxX(box, contentWidth, alignValue) {
+  if (alignValue === "right") return box.x + box.width - contentWidth;
+  if (alignValue === "center") return box.x + (box.width - contentWidth) / 2;
+  return box.x;
+}
+
+function alignBoxY(box, contentHeight, alignValue) {
+  if (alignValue === "top") return box.y + box.height - contentHeight;
+  if (alignValue === "middle") return box.y + (box.height - contentHeight) / 2;
+  return box.y;
+}
+
+function rotatedTextOrigin(box, textWidth, textHeight, textAlign, verticalAlign, rotation) {
+  const normalized = normalizeTextRotation(rotation);
+  if (normalized === 0) {
+    return {
+      x: alignX(box, textWidth, textAlign),
+      y: alignY(box, textHeight, verticalAlign),
+    };
+  }
+  const rotatedWidth = normalized === 90 || normalized === 270 ? textHeight : textWidth;
+  const rotatedHeight = normalized === 90 || normalized === 270 ? textWidth : textHeight;
+  const left = alignBoxX(box, rotatedWidth, textAlign);
+  const bottom = alignBoxY(box, rotatedHeight, verticalAlign);
+  if (normalized === 90) {
+    return { x: left + textHeight, y: bottom };
+  }
+  if (normalized === 180) {
+    return { x: left + textWidth, y: bottom + textHeight };
+  }
+  return { x: left, y: bottom + textWidth };
 }
 
 function hexToRgb(hex) {
