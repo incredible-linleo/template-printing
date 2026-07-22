@@ -98,7 +98,7 @@ const MAPPING_FUNCTIONS = [
   { key: `${MAPPING_FUNCTION_PREFIX}today_yyyymmdd`, labelKey: "mapping.function.todayYyyymmdd" },
 ];
 const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/svg+xml", "image/webp"]);
-const APP_VERSION = "v1.0100";
+const APP_VERSION = "v1.0101";
 
 const NAV = [
   { id: "setup", titleKey: "page.setup.title", flowKey: "nav.setup", icon: Layers },
@@ -176,11 +176,15 @@ function App() {
   const [exportUrl, setExportUrl] = useState("");
   const [status, setStatus] = useState("");
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [setupDropActive, setSetupDropActive] = useState(false);
+  const [designerDropActive, setDesignerDropActive] = useState(false);
 
   const canvasRef = useRef(null);
   const overlayRef = useRef(null);
   const cropPreviewRef = useRef(null);
   const dragRef = useRef(null);
+  const setupDragDepthRef = useRef(0);
+  const designerDragDepthRef = useRef(0);
 
   const activeTemplate = templates.find((template) => template.templateId === activeTemplateId) ?? null;
   const activeCsv = csvDatasets.find((dataset) => dataset.id === activeCsvId) ?? null;
@@ -365,14 +369,12 @@ function App() {
     if (node) requestAnimationFrame(() => drawCropPreview());
   }
 
-  async function handleTemplateSourceUpload(event) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
+  async function ingestTemplateSourceFile(file) {
     if (!file) return;
     const isPdf = file.type === "application/pdf";
     const isImage = IMAGE_MIME_TYPES.has(file.type);
     if (!isPdf && !isImage) {
-      setStatus("Unsupported source file. Use PDF, JPG, PNG, SVG, or WebP.");
+      setStatus(t("status.sourceUploadUnsupported"));
       return;
     }
     const bytes = await file.arrayBuffer();
@@ -403,7 +405,54 @@ function App() {
     setSelectedVariableId("");
     setDesignerMode("crop");
     setView("designer");
-    setStatus(isPdf ? t("status.pdfUploaded") : "Image uploaded. Draw a crop area to continue.");
+    setStatus(isPdf ? t("status.pdfUploaded") : t("status.imageUploaded"));
+  }
+
+  async function handleTemplateSourceUpload(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    await ingestTemplateSourceFile(file);
+  }
+
+  function isFileDragEvent(event) {
+    const types = Array.from(event.dataTransfer?.types ?? []);
+    return types.includes("Files");
+  }
+
+  function handleSourceDragEnter(event, setDropActive, dragDepthRef) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!setDropActive || !dragDepthRef || !isFileDragEvent(event)) return;
+    dragDepthRef.current += 1;
+    setDropActive(true);
+  }
+
+  function handleSourceDragOver(event, setDropActive) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!setDropActive || !isFileDragEvent(event)) return;
+    event.dataTransfer.dropEffect = "copy";
+    setDropActive(true);
+  }
+
+  function handleSourceDragLeave(event, setDropActive, dragDepthRef) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!setDropActive || !dragDepthRef || !isFileDragEvent(event)) return;
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) {
+      setDropActive(false);
+    }
+  }
+
+  function handleSourceDrop(event, setDropActive, dragDepthRef) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!isFileDragEvent(event)) return;
+    if (dragDepthRef) dragDepthRef.current = 0;
+    if (setDropActive) setDropActive(false);
+    const file = event.dataTransfer?.files?.[0] ?? null;
+    ingestTemplateSourceFile(file).catch((error) => setStatus(error?.message || t("status.sourceUploadUnsupported")));
   }
 
   function updateTemplate(templateId, patch) {
@@ -1057,6 +1106,11 @@ function App() {
             previewCsvId={previewCsvId}
             setPreviewCsvId={setPreviewCsvId}
             onCsvUpload={handleCsvUpload}
+            setupDropActive={setupDropActive}
+            onSourceDragEnter={(event) => handleSourceDragEnter(event, setSetupDropActive, setupDragDepthRef)}
+            onSourceDragOver={(event) => handleSourceDragOver(event, setSetupDropActive)}
+            onSourceDragLeave={(event) => handleSourceDragLeave(event, setSetupDropActive, setupDragDepthRef)}
+            onSourceDrop={(event) => handleSourceDrop(event, setSetupDropActive, setupDragDepthRef)}
             deleteCsvDataset={deleteCsvDataset}
             t={t}
           />
@@ -1108,6 +1162,11 @@ function App() {
             updateVariableStyle={updateSelectedVariableStyle}
             cropPreviewImageUrl={cropPreviewImageUrl}
             cropPreviewDisplaySize={cropPreviewDisplaySize}
+            designerDropActive={designerDropActive}
+            onSourceDragEnter={(event) => handleSourceDragEnter(event, setDesignerDropActive, designerDragDepthRef)}
+            onSourceDragOver={(event) => handleSourceDragOver(event, setDesignerDropActive)}
+            onSourceDragLeave={(event) => handleSourceDragLeave(event, setDesignerDropActive, designerDragDepthRef)}
+            onSourceDrop={(event) => handleSourceDrop(event, setDesignerDropActive, designerDragDepthRef)}
             t={t}
           />
         )}
@@ -1222,13 +1281,24 @@ function SetupPage({
   previewCsvId,
   setPreviewCsvId,
   onCsvUpload,
+  setupDropActive,
+  onSourceDragEnter,
+  onSourceDragOver,
+  onSourceDragLeave,
+  onSourceDrop,
   deleteCsvDataset,
   t,
 }) {
   const previewDataset = datasets.find((dataset) => dataset.id === previewCsvId);
   return (
     <section className="setup-grid">
-      <div className="section-card">
+      <div
+        className={`section-card drop-zone ${setupDropActive ? "drop-zone-active" : ""}`}
+        onDragEnter={onSourceDragEnter}
+        onDragOver={onSourceDragOver}
+        onDragLeave={onSourceDragLeave}
+        onDrop={onSourceDrop}
+      >
         <div className="section-head">
           <div>
             <h3>{t("page.templates.title")}</h3>
@@ -1242,6 +1312,8 @@ function SetupPage({
             <Plus size={16} /> {t("button.newCrop")}
           </button>
         </div>
+        <p className="muted source-help">{t("source.setupUploadHelp")}</p>
+        {setupDropActive && <p className="drop-zone-hint">{t("source.dropHintSetup")}</p>}
         <div className="template-list">
           {templates.length === 0 && <EmptyState title={t("source.noTemplates")} text={t("source.noTemplatesText")} />}
           {templates.map((template) => (
@@ -1615,6 +1687,11 @@ function DesignerPage(props) {
     updateVariableStyle,
     cropPreviewImageUrl,
     cropPreviewDisplaySize,
+    designerDropActive,
+    onSourceDragEnter,
+    onSourceDragOver,
+    onSourceDragLeave,
+    onSourceDrop,
     t,
   } = props;
   const [inspectorOpen, setInspectorOpen] = useState(true);
@@ -1626,7 +1703,13 @@ function DesignerPage(props) {
   };
   return (
     <section className={showCropMode ? "crop-layout" : `editor-layout ${inspectorOpen ? "" : "panel-closed"}`}>
-      <div className="canvas-card">
+      <div
+        className={`canvas-card drop-zone ${designerDropActive && showCropMode ? "drop-zone-active" : ""}`}
+        onDragEnter={showCropMode ? onSourceDragEnter : undefined}
+        onDragOver={showCropMode ? onSourceDragOver : undefined}
+        onDragLeave={showCropMode ? onSourceDragLeave : undefined}
+        onDrop={showCropMode ? onSourceDrop : undefined}
+      >
         <div className="local-toolbar">
           <label className="designer-template-select">
             <span>{t("common.template")}</span>
@@ -1668,6 +1751,7 @@ function DesignerPage(props) {
             </>
           )}
         </div>
+        {showCropMode && designerDropActive && <p className="drop-zone-hint drop-zone-hint-designer">{t("source.dropHintDesigner")}</p>}
         {showCropMode ? (
           <div className="pdf-frame" style={{ width: renderBox.width || "auto" }}>
             <canvas ref={canvasRef} />

@@ -584,6 +584,35 @@ button:not(.primary) .spinner {
   padding: 18px;
 }
 
+.drop-zone {
+  position: relative;
+}
+
+.drop-zone-active {
+  background: #f1f7ff;
+  border-color: #1f4fa3;
+  box-shadow: 0 0 0 2px rgba(31, 79, 163, 0.22) inset;
+}
+
+.drop-zone-hint {
+  background: #e9f2ff;
+  border: 1px dashed #5f8fda;
+  border-radius: 8px;
+  color: #24497f;
+  font-size: 12px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+}
+
+.source-help {
+  margin: 8px 0 10px;
+}
+
+.drop-zone-hint-designer {
+  margin: 10px 12px 0;
+}
+
 .section-card.narrow {
   margin: 18px;
   max-width: 780px;
