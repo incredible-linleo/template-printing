@@ -1,7 +1,7 @@
 {
   "en": {
     "app.kicker": "Browser-local",
-    "app.title": "SSFlow",
+    "app.title": "FlowForge",
     "language.label": "Language",
     "language.en": "English",
     "language.ja": "Japanese",
@@ -222,7 +222,7 @@
   },
   "ja": {
     "app.kicker": "ローカル",
-    "app.title": "SSFlow",
+    "app.title": "FlowForge",
     "language.label": "言語",
     "language.en": "英語",
     "language.ja": "日本語",

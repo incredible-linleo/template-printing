@@ -3478,7 +3478,7 @@ function printWindowHtml(t, titleKey, pdfUrl) {
           animation: spin 0.8s linear infinite;
           border: 3px solid rgba(20, 31, 43, 0.18);
           border-radius: 999px;
-          border-top-color: #146c5f;
+          border-top-color: #242424;
           display: inline-block;
           height: 18px;
           width: 18px;
@@ -3525,7 +3525,7 @@ function buildButtonTooltip(label, t) {
   const text = String(label || "").trim();
   if (!text) return t("common.buttonAction");
   const hasJapanese = /[\u3040-\u30ff\u3400-\u9fff]/.test(text);
-  if (hasJapanese) return `クリックして${text}します。`;
+  if (hasJapanese) return `クリチE��して${text}します。`;
   return `Click to ${text.toLowerCase()}.`;
 }
 

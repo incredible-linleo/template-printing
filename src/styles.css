@@ -1,4 +1,4 @@
-﻿@font-face {
+@font-face {
   font-family: "NotoSansCJKjpUI";
   src: url("/fonts/NotoSansCJKjp-Regular.otf") format("opentype");
   font-weight: 400;
@@ -15,10 +15,17 @@
 }
 
 :root {
-  color: #14284a;
-  background: #eef2f6;
+  color: #202020;
+  background: #f2f2f2;
   font-size: 15px;
   --top-chrome-offset: 156px;
+  --ff-black: #181818;
+  --ff-charcoal: #2b2b2b;
+  --ff-text: #202020;
+  --ff-muted: #686868;
+  --ff-line: #d4d4d4;
+  --ff-soft: #f2f2f2;
+  --ff-panel: #ffffff;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
@@ -54,9 +61,9 @@ button,
 .button {
   align-items: center;
   background: #ffffff;
-  border: 1px solid #c9d3df;
+  border: 1px solid var(--ff-line);
   border-radius: 6px;
-  color: #14284a;
+  color: var(--ff-text);
   cursor: pointer;
   display: inline-flex;
   gap: 8px;
@@ -73,7 +80,7 @@ button:disabled {
 
 input,
 select {
-  border: 1px solid #c9d3df;
+  border: 1px solid var(--ff-line);
   border-radius: 6px;
   min-height: 36px;
   padding: 7px 9px;
@@ -84,9 +91,9 @@ select {
   appearance: none;
   background-color: #ffffff;
   background-image:
-    linear-gradient(45deg, transparent 50%, #1f4fa3 50%),
-    linear-gradient(135deg, #1f4fa3 50%, transparent 50%),
-    linear-gradient(to right, #d6dfeb, #d6dfeb);
+    linear-gradient(45deg, transparent 50%, #333333 50%),
+    linear-gradient(135deg, #333333 50%, transparent 50%),
+    linear-gradient(to right, #d4d4d4, #d4d4d4);
   background-position:
     calc(100% - 18px) calc(50% + 1px),
     calc(100% - 12px) calc(50% + 1px),
@@ -96,14 +103,14 @@ select {
     6px 6px,
     6px 6px,
     1px 62%;
-  border-color: #b7c7db;
+  border-color: #bdbdbd;
   border-radius: 10px;
   padding-right: 42px;
 }
 
 select:focus {
-  border-color: #1f4fa3;
-  box-shadow: 0 0 0 3px rgba(31, 79, 163, 0.18);
+  border-color: #333333;
+  box-shadow: 0 0 0 3px rgba(32, 32, 32, 0.14);
   outline: none;
 }
 
@@ -136,8 +143,8 @@ h3 {
 }
 
 .primary {
-  background: #1f4fa3;
-  border-color: #1f4fa3;
+  background: var(--ff-black);
+  border-color: var(--ff-black);
   color: #ffffff;
 }
 
@@ -152,11 +159,11 @@ h3 {
 
 .muted,
 .meta {
-  color: #5b7091;
+  color: var(--ff-muted);
 }
 
 .eyebrow {
-  color: #5b7091;
+  color: var(--ff-muted);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0;
@@ -184,7 +191,7 @@ h3 {
 
 .sidebar {
   background: #ffffff;
-  border-right: 1px solid #dbe3ec;
+  border-right: 1px solid var(--ff-line);
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -202,7 +209,7 @@ h3 {
 }
 
 .brand svg {
-  color: #1f4fa3;
+  color: var(--ff-black);
 }
 
 .collapse-button {
@@ -252,7 +259,7 @@ h3 {
 }
 
 .nav-list button.active {
-  background: #102a56;
+  background: var(--ff-black);
   color: #ffffff;
 }
 
@@ -266,7 +273,7 @@ h3 {
 }
 
 .library-panel h3 {
-  color: #3f587f;
+  color: #555555;
   font-size: 12px;
   margin: 8px 0 0;
   text-transform: uppercase;
@@ -293,7 +300,7 @@ h3 {
 }
 
 .library-select span {
-  color: #3f587f;
+  color: #555555;
   font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
@@ -304,8 +311,8 @@ h3 {
 }
 
 .library-summary {
-  background: #eef4ff;
-  border: 1px solid #8fb0e8;
+  background: #eeeeee;
+  border: 1px solid #a8a8a8;
   border-radius: 8px;
   display: grid;
   gap: 4px;
@@ -313,7 +320,7 @@ h3 {
 }
 
 .library-summary span {
-  color: #5b7091;
+  color: #686868;
   font-size: 12px;
 }
 
@@ -334,7 +341,7 @@ h3 {
 .page-header {
   align-items: center;
   background: #ffffff;
-  border-bottom: 1px solid #dbe3ec;
+  border-bottom: 1px solid #dedede;
   display: flex;
   gap: 18px;
   justify-content: space-between;
@@ -350,7 +357,7 @@ h3 {
 }
 
 .page-heading svg {
-  color: #1f4fa3;
+  color: #242424;
 }
 
 .header-actions {
@@ -366,7 +373,7 @@ h3 {
 }
 
 .language-select span {
-  color: #3f587f;
+  color: #555555;
   font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
@@ -381,7 +388,7 @@ h3 {
 
 .context-summary button {
   align-items: flex-start;
-  background: #f8fafc;
+  background: #fafafa;
   display: grid;
   gap: 2px;
   justify-items: start;
@@ -391,7 +398,7 @@ h3 {
 
 .context-summary span,
 .header-selectors label {
-  color: #3f587f;
+  color: #555555;
   font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
@@ -411,7 +418,7 @@ h3 {
 .flow-bar {
   align-items: center;
   background: #ffffff;
-  border-bottom: 1px solid #dbe3ec;
+  border-bottom: 1px solid #dedede;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   padding: 10px 24px;
@@ -419,10 +426,10 @@ h3 {
 }
 
 .flow-bar button {
-  background: #eef4ff;
+  background: #eeeeee;
   border-radius: 0;
   border-width: 1px 0 1px 1px;
-  color: #1f4fa3;
+  color: #242424;
   gap: 8px;
   justify-content: flex-start;
   min-height: 44px;
@@ -436,17 +443,17 @@ h3 {
 }
 
 .flow-bar button.done {
-  background: #eef4ff;
-  color: #1f4fa3;
+  background: #eeeeee;
+  color: #242424;
 }
 
 .flow-bar button.warning {
-  background: #eef4ff;
-  color: #1f4fa3;
+  background: #eeeeee;
+  color: #242424;
 }
 
 .flow-bar button.active {
-  background: #102a56;
+  background: #181818;
   color: #ffffff;
 }
 
@@ -462,9 +469,9 @@ h3 {
 }
 
 .status {
-  background: #eef4ff;
-  border-left: 4px solid #1f4fa3;
-  color: #1a3f84;
+  background: #eeeeee;
+  border-left: 4px solid #242424;
+  color: #363636;
   margin: 0;
   max-width: 420px;
   padding: 10px 12px;
@@ -563,7 +570,7 @@ button:not(.primary) .spinner {
 }
 
 .layout-splitter-handle {
-  background: #d4deea;
+  background: #dddddd;
   border-radius: 999px;
   height: 100%;
   min-height: 220px;
@@ -572,7 +579,7 @@ button:not(.primary) .spinner {
 }
 
 .layout-splitter:hover .layout-splitter-handle {
-  background: #8ba2bf;
+  background: #999999;
 }
 
 .page-grid.single-column {
@@ -599,7 +606,7 @@ button:not(.primary) .spinner {
 .canvas-card,
 .inspector {
   background: #ffffff;
-  border: 1px solid #dbe3ec;
+  border: 1px solid #dedede;
   border-radius: 8px;
 }
 
@@ -612,16 +619,16 @@ button:not(.primary) .spinner {
 }
 
 .drop-zone-active {
-  background: #f1f7ff;
-  border-color: #1f4fa3;
-  box-shadow: 0 0 0 2px rgba(31, 79, 163, 0.22) inset;
+  background: #f5f5f5;
+  border-color: #242424;
+  box-shadow: 0 0 0 2px rgba(32, 32, 32, 0.18) inset;
 }
 
 .drop-zone-hint {
-  background: #e9f2ff;
-  border: 1px dashed #5f8fda;
+  background: #efefef;
+  border: 1px dashed #888888;
   border-radius: 8px;
-  color: #24497f;
+  color: #484848;
   font-size: 12px;
   font-weight: 700;
   margin: 0 0 12px;
@@ -643,7 +650,7 @@ button:not(.primary) .spinner {
 
 .section-head {
   align-items: flex-start;
-  border-bottom: 1px solid #e6ebf1;
+  border-bottom: 1px solid #e8e8e8;
   display: flex;
   gap: 16px;
   justify-content: space-between;
@@ -690,7 +697,7 @@ button:not(.primary) .spinner {
 }
 
 .csv-upload-tools label:not(.button) {
-  color: #3f587f;
+  color: #555555;
   display: grid;
   gap: 5px;
   font-size: 12px;
@@ -710,7 +717,7 @@ button:not(.primary) .spinner {
 
 .csv-row {
   align-items: center;
-  border: 1px solid #dbe3ec;
+  border: 1px solid #dedede;
   border-radius: 8px;
   display: grid;
   gap: 16px;
@@ -719,8 +726,8 @@ button:not(.primary) .spinner {
 }
 
 .csv-row.active {
-  border-color: #1f4fa3;
-  box-shadow: inset 4px 0 0 #1f4fa3;
+  border-color: #242424;
+  box-shadow: inset 4px 0 0 #242424;
 }
 
 .csv-row-main {
@@ -746,7 +753,7 @@ button:not(.primary) .spinner {
 }
 
 .csv-row-main span {
-  color: #5b7091;
+  color: #686868;
   display: block;
   font-size: 13px;
   line-height: 1.45;
@@ -787,7 +794,7 @@ button:not(.primary) .spinner {
 
 .template-row {
   align-items: center;
-  border: 1px solid #dbe3ec;
+  border: 1px solid #dedede;
   border-radius: 8px;
   display: grid;
   gap: 14px;
@@ -797,8 +804,8 @@ button:not(.primary) .spinner {
 }
 
 .template-row.active {
-  border-color: #1f4fa3;
-  box-shadow: inset 4px 0 0 #1f4fa3;
+  border-color: #242424;
+  box-shadow: inset 4px 0 0 #242424;
 }
 
 .template-row-main {
@@ -821,7 +828,7 @@ button:not(.primary) .spinner {
 }
 
 .template-row span {
-  color: #5b7091;
+  color: #686868;
   font-size: 13px;
 }
 
@@ -844,7 +851,7 @@ button:not(.primary) .spinner {
 }
 
 .template-row-actions button {
-  border: 1px solid #c9d3df;
+  border: 1px solid #d4d4d4;
   display: inline-flex;
   flex: 0 0 auto;
   min-height: 40px;
@@ -873,8 +880,8 @@ button:not(.primary) .spinner {
 .local-toolbar {
   align-items: center;
   background: #ffffff;
-  border-bottom: 1px solid #e6ebf1;
-  box-shadow: 0 2px 0 rgba(20, 40, 74, 0.04);
+  border-bottom: 1px solid #e8e8e8;
+  box-shadow: 0 2px 0 rgba(20, 20, 20, 0.04);
   display: flex;
   flex-wrap: wrap;
   gap: 8px 10px;
@@ -892,7 +899,7 @@ button:not(.primary) .spinner {
 }
 
 .designer-template-select span {
-  color: #3f587f;
+  color: #555555;
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
@@ -908,8 +915,8 @@ button:not(.primary) .spinner {
 }
 
 .segmented {
-  background: #eef2f6;
-  border: 1px solid #c9d3df;
+  background: #f2f2f2;
+  border: 1px solid #d4d4d4;
   border-radius: 7px;
   display: inline-flex;
   padding: 3px;
@@ -921,19 +928,19 @@ button:not(.primary) .spinner {
 }
 
 .segmented button.active {
-  background: #102a56;
+  background: #181818;
   color: #ffffff;
 }
 
 .toolbar-hint,
 .debug-inline {
-  color: #5b7091;
+  color: #686868;
   font-size: 13px;
 }
 
 .snap-toggle {
   align-items: center;
-  color: #3f587f;
+  color: #555555;
   display: inline-flex;
   font-size: 12px;
   font-weight: 700;
@@ -962,8 +969,8 @@ button:not(.primary) .spinner {
 
 .zoom-controls {
   align-items: center;
-  background: #f8fafc;
-  border: 1px solid #c9d3df;
+  background: #fafafa;
+  border: 1px solid #d4d4d4;
   border-radius: 7px;
   display: inline-flex;
   gap: 4px;
@@ -978,7 +985,7 @@ button:not(.primary) .spinner {
 }
 
 .zoom-controls span {
-  color: #3f587f;
+  color: #555555;
   font-size: 12px;
   font-weight: 800;
   min-width: 42px;
@@ -987,7 +994,7 @@ button:not(.primary) .spinner {
 
 .pdf-frame {
   background: #ffffff;
-  border: 1px solid #dbe3ec;
+  border: 1px solid #dedede;
   overflow: hidden;
   line-height: 0;
   margin: 12px auto;
@@ -1013,8 +1020,8 @@ button:not(.primary) .spinner {
 }
 
 .crop-box {
-  background: rgba(20, 108, 95, 0.08);
-  border: 2px solid #1f4fa3;
+  background: rgba(20, 20, 20, 0.08);
+  border: 2px solid #242424;
   cursor: move;
   position: absolute;
   touch-action: none;
@@ -1022,7 +1029,7 @@ button:not(.primary) .spinner {
 
 .handle {
   background: #ffffff;
-  border: 2px solid #1f4fa3;
+  border: 2px solid #242424;
   border-radius: 999px;
   height: 18px;
   position: absolute;
@@ -1095,9 +1102,9 @@ button:not(.primary) .spinner {
 }
 
 .debug code {
-  background: #f1f4f8;
+  background: #f3f3f3;
   border-radius: 6px;
-  color: #14284a;
+  color: #202020;
   display: block;
   font-size: 12px;
   padding: 8px;
@@ -1105,7 +1112,7 @@ button:not(.primary) .spinner {
 }
 
 .crop-preview {
-  background: #dfe5ec;
+  background: #e1e1e1;
   display: inline-block;
   line-height: 0;
   margin: 18px;
@@ -1174,14 +1181,14 @@ button:not(.primary) .spinner {
 }
 
 .guide-line-v {
-  background: rgba(49, 104, 193, 0.9);
+  background: rgba(45, 45, 45, 0.9);
   bottom: 0;
   top: 0;
   width: 1px;
 }
 
 .guide-line-h {
-  background: rgba(49, 104, 193, 0.9);
+  background: rgba(45, 45, 45, 0.9);
   height: 1px;
   left: 0;
   right: 0;
@@ -1200,7 +1207,7 @@ button:not(.primary) .spinner {
 
 .variable-list-row {
   align-items: center;
-  border: 1px solid #dbe3ec;
+  border: 1px solid #dedede;
   border-radius: 5px;
   display: grid;
   gap: 4px;
@@ -1259,13 +1266,13 @@ button:not(.primary) .spinner {
 }
 
 .variable-list span {
-  color: #5b7091;
+  color: #686868;
   font-size: 11px;
   line-height: 1.2;
 }
 
 .field-editor {
-  border-top: 1px solid #e6ebf1;
+  border-top: 1px solid #e8e8e8;
   display: grid;
   gap: 12px;
   min-height: 0;
@@ -1288,7 +1295,7 @@ button:not(.primary) .spinner {
 
 .swatch-row label,
 .bg-color-control {
-  color: #3f587f;
+  color: #555555;
   display: grid;
   gap: 5px;
   font-size: 13px;
@@ -1313,7 +1320,7 @@ button:not(.primary) .spinner {
 
 .bg-transparent-toggle {
   align-items: center;
-  color: #5b7091;
+  color: #686868;
   display: inline-flex;
   font-size: 12px;
   font-weight: 700;
@@ -1346,7 +1353,7 @@ button:not(.primary) .spinner {
 .form-stack label,
 .form-grid label,
 .mapping-list label {
-  color: #3f587f;
+  color: #555555;
   display: grid;
   gap: 5px;
   font-size: 13px;
@@ -1392,14 +1399,14 @@ button:not(.primary) .spinner {
 
 .mapping-list label {
   align-items: center;
-  border-bottom: 1px solid #e6ebf1;
+  border-bottom: 1px solid #e8e8e8;
   grid-template-columns: minmax(0, 1fr) 280px;
   padding: 10px 0;
 }
 
 .print-job-picker {
-  background: #f8fafc;
-  border: 1px solid #e0e7ef;
+  background: #fafafa;
+  border: 1px solid #e3e3e3;
   border-radius: 8px;
   display: grid;
   gap: 12px;
@@ -1413,7 +1420,7 @@ button:not(.primary) .spinner {
 }
 
 .print-job-picker label {
-  color: #3f587f;
+  color: #555555;
   display: grid;
   gap: 6px;
   font-size: 12px;
@@ -1422,7 +1429,7 @@ button:not(.primary) .spinner {
 }
 
 .print-job-picker select {
-  color: #14284a;
+  color: #202020;
   font-size: 16px;
   font-weight: 700;
   min-height: 44px;
@@ -1431,8 +1438,8 @@ button:not(.primary) .spinner {
 
 .print-job-summary {
   align-items: center;
-  background: #f8fafc;
-  border: 1px solid #e0e7ef;
+  background: #fafafa;
+  border: 1px solid #e3e3e3;
   border-radius: 8px;
   display: flex;
   gap: 14px;
@@ -1447,7 +1454,7 @@ button:not(.primary) .spinner {
 }
 
 .print-job-summary span {
-  color: #3f587f;
+  color: #555555;
   font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
@@ -1460,7 +1467,7 @@ button:not(.primary) .spinner {
 }
 
 .mapping-panel {
-  border: 1px solid #dbe3ec;
+  border: 1px solid #dedede;
   border-radius: 8px;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -1471,15 +1478,15 @@ button:not(.primary) .spinner {
 
 .mapping-panel-head {
   align-items: center;
-  background: #f8fafc;
-  border-bottom: 1px solid #dbe3ec;
+  background: #fafafa;
+  border-bottom: 1px solid #dedede;
   display: flex;
   justify-content: space-between;
   padding: 14px 16px;
 }
 
 .mapping-panel-head h3 {
-  color: #344154;
+  color: #444444;
   font-size: 14px;
   letter-spacing: 0;
   margin: 0;
@@ -1487,7 +1494,7 @@ button:not(.primary) .spinner {
 }
 
 .mapping-panel-head span {
-  color: #5b7091;
+  color: #686868;
   font-size: 13px;
   font-weight: 700;
 }
@@ -1503,7 +1510,7 @@ button:not(.primary) .spinner {
   align-items: center;
   background: #ffffff;
   border: 0;
-  border-bottom: 1px solid #e6ebf1;
+  border-bottom: 1px solid #e8e8e8;
   border-radius: 0;
   display: grid;
   gap: 12px;
@@ -1515,16 +1522,16 @@ button:not(.primary) .spinner {
 
 .mapping-drop-row:hover,
 .mapping-drop-row.selected {
-  background: #f3f8f7;
+  background: #f5f5f5;
 }
 
 .mapping-drop-row.selected {
-  box-shadow: inset 4px 0 0 #1f4fa3;
+  box-shadow: inset 4px 0 0 #242424;
 }
 
 .mapping-drop-row.mapped .mapping-target {
-  background: #eef4ff;
-  border-color: #83c6bc;
+  background: #eeeeee;
+  border-color: #aaaaaa;
 }
 
 .mapping-var-name,
@@ -1537,7 +1544,7 @@ button:not(.primary) .spinner {
 .mapping-var-name strong,
 .mapping-target strong,
 .csv-field-chip strong {
-  color: #344154;
+  color: #444444;
   font-size: 15px;
   line-height: 1.25;
   overflow: hidden;
@@ -1548,7 +1555,7 @@ button:not(.primary) .spinner {
 .mapping-var-name small,
 .mapping-target small,
 .csv-field-chip small {
-  color: #7b8795;
+  color: #777777;
   font-size: 12px;
   font-weight: 600;
   overflow: hidden;
@@ -1557,7 +1564,7 @@ button:not(.primary) .spinner {
 }
 
 .mapping-target {
-  border: 1px dashed #b7c4d2;
+  border: 1px dashed #bdbdbd;
   border-radius: 7px;
   min-height: 48px;
   padding: 8px 10px;
@@ -1565,7 +1572,7 @@ button:not(.primary) .spinner {
 
 .mapping-target em {
   align-self: center;
-  color: #7b8795;
+  color: #777777;
   font-size: 13px;
   font-style: normal;
   font-weight: 700;
@@ -1583,7 +1590,7 @@ button:not(.primary) .spinner {
   align-items: start;
   background: #ffffff;
   border: 0;
-  border-bottom: 1px solid #e6ebf1;
+  border-bottom: 1px solid #e8e8e8;
   border-radius: 0;
   display: grid;
   gap: 4px;
@@ -1594,17 +1601,17 @@ button:not(.primary) .spinner {
 }
 
 .csv-field-chip:hover {
-  background: #f8fafc;
+  background: #fafafa;
 }
 
 .csv-field-chip.used {
-  background: #eef4ff;
+  background: #eeeeee;
 }
 
 .mapping-functions-head {
-  background: #f8fafc;
-  border-bottom: 1px solid #dbe3ec;
-  color: #344154;
+  background: #fafafa;
+  border-bottom: 1px solid #dedede;
+  color: #444444;
   font-size: 14px;
   font-weight: 800;
   letter-spacing: 0;
@@ -1613,11 +1620,11 @@ button:not(.primary) .spinner {
 }
 
 .mapping-function-chip {
-  background: #f8fafc;
+  background: #fafafa;
 }
 
 .mapping-function-chip:hover {
-  background: #f1f4f8;
+  background: #f3f3f3;
 }
 
 .quiet-card {
@@ -1647,7 +1654,7 @@ button:not(.primary) .spinner {
 }
 
 .advanced-layout {
-  border-top: 1px solid #e6ebf1;
+  border-top: 1px solid #e8e8e8;
   margin-top: 16px;
   padding-top: 14px;
 }
@@ -1662,7 +1669,7 @@ button:not(.primary) .spinner {
 }
 
 .print-flow {
-  border-top: 1px solid #e6ebf1;
+  border-top: 1px solid #e8e8e8;
   display: grid;
   gap: 12px;
   margin-top: 12px;
@@ -1670,7 +1677,7 @@ button:not(.primary) .spinner {
 }
 
 .print-actions {
-  border-top: 1px solid #e6ebf1;
+  border-top: 1px solid #e8e8e8;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -1691,8 +1698,8 @@ button:not(.primary) .spinner {
 
 .choice-row button.active,
 .preset-grid button:focus {
-  border-color: #1f4fa3;
-  box-shadow: inset 0 0 0 1px #1f4fa3;
+  border-color: #242424;
+  box-shadow: inset 0 0 0 1px #242424;
 }
 
 .preset-grid button {
@@ -1706,8 +1713,8 @@ button:not(.primary) .spinner {
 }
 
 .control-tile {
-  background: #f8fafc;
-  border: 1px solid #e0e7ef;
+  background: #fafafa;
+  border: 1px solid #e3e3e3;
   border-radius: 8px;
   display: grid;
   gap: 6px;
@@ -1715,7 +1722,7 @@ button:not(.primary) .spinner {
 }
 
 .control-tile span {
-  color: #3f587f;
+  color: #555555;
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
@@ -1762,7 +1769,7 @@ button:not(.primary) .spinner {
 }
 
 .preview-page-controls span {
-  color: #3f587f;
+  color: #555555;
   font-size: 13px;
   font-weight: 800;
 }
@@ -1781,7 +1788,7 @@ button:not(.primary) .spinner {
 }
 
 .preview-zoom-controls span {
-  color: #3f587f;
+  color: #555555;
   font-size: 13px;
   font-weight: 800;
   min-width: 44px;
@@ -1797,7 +1804,7 @@ button:not(.primary) .spinner {
 
 .sheet-preview {
   background: #ffffff;
-  border: 1px solid #c9d3df;
+  border: 1px solid #d4d4d4;
   box-shadow: 0 10px 28px rgba(31, 41, 51, 0.12);
   display: grid;
   flex: 0 0 auto;
@@ -1845,7 +1852,7 @@ button:not(.primary) .spinner {
 }
 
 .paper-slot {
-  background: #f1f4f8;
+  background: #f3f3f3;
   border: 0;
   border-radius: 4px;
   align-items: flex-start;
@@ -1887,7 +1894,7 @@ button:not(.primary) .spinner {
 }
 
 .embedded-preview {
-  border-top: 1px solid #e6ebf1;
+  border-top: 1px solid #e8e8e8;
   margin-top: 18px;
   padding-top: 14px;
 }
@@ -1903,20 +1910,20 @@ table {
 
 th,
 td {
-  border-bottom: 1px solid #e6ebf1;
+  border-bottom: 1px solid #e8e8e8;
   padding: 8px;
   text-align: left;
 }
 
 th {
-  color: #3f587f;
+  color: #555555;
   font-size: 12px;
   text-transform: uppercase;
 }
 
 .empty-state {
   align-items: center;
-  color: #5b7091;
+  color: #686868;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -1931,7 +1938,7 @@ th {
 
 .empty-state svg,
 .export-panel svg {
-  color: #1f4fa3;
+  color: #242424;
 }
 
 .export-panel {
@@ -1981,7 +1988,7 @@ th {
   }
 
   .sidebar {
-    border-bottom: 1px solid #dbe3ec;
+    border-bottom: 1px solid #dedede;
     border-right: 0;
   }
 
